@@ -1,0 +1,11 @@
+### exclude all assets
+/site/assets/cache
+/site/assets/sessions
+/site/assets/logs
+
+## ignore updated module backups
+/site/modules/.*
+
+## others
+/site/assets/sql.txt
+/site/assets/RockGrid/tester.txt
