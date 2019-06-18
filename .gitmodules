@@ -1,3 +1,6 @@
 [submodule "site/modules/RockModuleCreator"]
 	path = site/modules/RockModuleCreator
 	url = git@github.com:BernhardBaumrock/RockModuleCreator.git
+[submodule "site/modules/FieldtypeRuntimeMarkup"]
+	path = site/modules/FieldtypeRuntimeMarkup
+	url = git@github.com:BernhardBaumrock/FieldtypeRuntimeMarkup.git
