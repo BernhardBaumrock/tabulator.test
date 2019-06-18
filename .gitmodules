@@ -1,0 +1,3 @@
+[submodule "site/modules/FieldtypeRuntimeMarkup"]
+	path = site/modules/FieldtypeRuntimeMarkup
+	url = git@github.com:kongondo/FieldtypeRuntimeMarkup.git

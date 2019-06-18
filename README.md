@@ -4,10 +4,11 @@
 
 ## Install
 
-1) Clone the repo
+1) Clone the repo and update/init submodules
 
 ```
 git clone git@github.com:BernhardBaumrock/tabulator.test.git
+git submodule update --init --recursive
 ```
 
 2) Restore the latest DB dump
