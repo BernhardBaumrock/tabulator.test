@@ -7,7 +7,8 @@
 1) Clone the repo and update/init submodules
 
 ```
-git clone git@github.com:BernhardBaumrock/tabulator.test.git
+cd /your/root/folder
+git clone git@github.com:BernhardBaumrock/tabulator.test.git .
 git submodule update --init --recursive
 ```
 
