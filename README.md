@@ -18,6 +18,8 @@ git submodule update --init --recursive
 /site/assets/backups/database/tabulator.sql  ---> DB name tabulator
 ```
 
+The site uses user `root` with no password to connect to mysql!
+
 ## Login
 
 ```
