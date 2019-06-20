@@ -26,3 +26,7 @@ The site uses user `root` with no password to connect to mysql!
 username = tabulator
 password = tabulator
 ```
+
+## Play around
+
+Go to Setup > RockMarkup Sandbox
