@@ -1,0 +1,30 @@
+{
+    "file": "site\\modules\\FieldtypeRockTabulator\\_langs.php",
+    "textdomain": "site--modules--fieldtyperocktabulator--_langs-php",
+    "translations": {
+        "400085f1f6d495bfa114bacb18286230": {
+            "text": "Erste Seite"
+        },
+        "d55b30607c2a9a2616347d6edb789f6b": {
+            "text": "Letzte"
+        },
+        "bb5625c0fbcc7adf2a0b06e750747195": {
+            "text": "Letzte Seite"
+        },
+        "14230d11143a03f4330c6433d5032a9d": {
+            "text": "Zur\u00fcck"
+        },
+        "721900c7049aad6ed26f55393455cef0": {
+            "text": "Vorige Seite"
+        },
+        "10ac3d04253ef7e1ddc73e6091c0cd55": {
+            "text": "Weiter"
+        },
+        "d4b6f9185273f54f5b467d6410acf827": {
+            "text": "N\u00e4chste Seite"
+        },
+        "7fb55ed0b7a30342ba6da306428cae04": {
+            "text": "Erste"
+        }
+    }
+}
