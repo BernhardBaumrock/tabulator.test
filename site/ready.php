@@ -8,6 +8,19 @@ $this->addHookAfter("InputfieldRockTabulator::getTranslations", function(HookEve
   $event->return = $langs;
 });
 
-$this->addHookProperty("Language::locale", function($event) {
-  $event->return = 'xx-xx';
+/**
+ * Backup database on logout and ZIP it
+ */
+$this->addHookAfter("Session::logout", function(HookEvent $event) {
+  $db = $this->database->backups(); /** @var WireDatabaseBackup $db */
+  $path = $this->config->paths->assets."backups/database/";
+  $sql = $path."tabulator.sql";
+  $zip = $path."tabulator.zip";
+
+  $this->files->unlink($sql);
+  $this->files->unlink($zip);
+  $file = $db->backup(['file' => $path]);
+  $this->files->rename($file, $sql);
+  $this->files->zip($zip, [$sql]);
+  $this->files->unlink($sql);
 });
