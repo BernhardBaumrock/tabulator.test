@@ -5,7 +5,7 @@
  *
  * Matches selector strings to pages
  * 
- * ProcessWire 3.x, Copyright 2016 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2019 by Ryan Cramer
  * https://processwire.com
  *
  * Hookable methods: 
@@ -162,13 +162,15 @@ class PageFinder extends Wire {
 	protected $start = 0;
 	protected $parent_id = null;
 	protected $templates_id = null;
-	protected $checkAccess = true;
+	protected $checkAccess = true; // becomes false if check_access=0 or include=all
+	protected $includeMode = ''; // include mode if specified (all, unpublished, hidden)
 	protected $getQueryNumChildren = 0; // number of times the function has been called
 	protected $lastOptions = array(); 
 	protected $extraOrSelectors = array(); // one from each field must match
 	protected $sortsAfter = array(); // apply these sorts after pages loaded 
 	protected $reverseAfter = false; // reverse order after load?
 	protected $pageArrayData = array(); // any additional data that should be populated back to any resulting PageArray objects
+	protected $partialMatchOperators = array('%=', '^=', '$=', '%^=', '%$=', '*=');
 	protected $singlesFields = array( // fields that can only be used by themselves (not OR'd with other fields)
 		'has_parent', 
 		'hasParent', 
@@ -229,6 +231,7 @@ class PageFinder extends Wire {
 				if(!$not && (is_null($maxStatus) || $selector->value > $maxStatus)) $maxStatus = (int) $selector->value; 
 				
 			} else if($fieldName == 'include' && $selector->operator == '=' && in_array($selector->value, array('hidden', 'all', 'unpublished', 'trash'))) {
+				$this->includeMode = $selector->value;
 				if($selector->value == 'hidden') $options['findHidden'] = true;
 					else if($selector->value == 'unpublished') $options['findUnpublished'] = true;
 					else if($selector->value == 'trash') $options['findTrash'] = true; 
@@ -2048,6 +2051,7 @@ class PageFinder extends Wire {
 			// the following fields are defined in each iteration here because they may be modified in the loop
 			$table = "pages";
 			$operator = $selector->operator;
+			$isPartialOperator = in_array($operator, $this->partialMatchOperators); 
 			$subfield = '';
 			$IDs = array(); // populated in special cases where we can just match parent IDs
 			$sql = '';
@@ -2073,7 +2077,7 @@ class PageFinder extends Wire {
 			if($isParent || $isChildren || $isPages) {
 				// parent, children, pages
 
-				if(($isPages || $isParent) && (!$subfield || in_array($subfield, array('id', 'path', 'url')))) {
+				if(($isPages || $isParent) && !$isPartialOperator && (!$subfield || in_array($subfield, array('id', 'path', 'url')))) {
 					// match by location (id or path)
 					// convert parent fields like '/about/company/history' to the equivalent ID
 					foreach($values as $k => $v) {
@@ -2104,11 +2108,7 @@ class PageFinder extends Wire {
 								$s = '';
 								if($field === 'children') $finderMethod = 'findParentIDs'; 
 								// inherit include mode from main selector
-								$includeSelector = trim(
-									$selectors->getSelectorByField('include') . ',' . 
-									$selectors->getSelectorByField('status') . ',' . 
-									$selectors->getSelectorByField('check_access'), ','
-								);
+								$includeSelector = $this->getIncludeSelector($selectors);
 							} else if($field === 'children') {
 								$s = 'children.id';
 							} else {
@@ -2119,7 +2119,8 @@ class PageFinder extends Wire {
 						}
 						$IDs = $finder->$finderMethod(new Selectors(ltrim(
 							"$includeSelector," . 
-							"$s$subfield$operator" . $sanitizer->selectorValue($values), ','
+							"$s$subfield$operator" . $sanitizer->selectorValue($values), 
+							','
 						)));
 						if(!count($IDs)) $IDs[] = -1; // forced non match
 					} else {
@@ -2174,6 +2175,8 @@ class PageFinder extends Wire {
 				}
 				
 				$isName = $field === 'name' || strpos($field, 'name') === 0; 
+				$isPath = $field === 'path' || $field === 'url';
+				$isNumChildren = $field === 'num_children' || $field === 'numChildren';
 
 				if($isName && $operator == '~=') {
 					// handle one or more space-separated full words match to 'name' field in any order
@@ -2183,21 +2186,42 @@ class PageFinder extends Wire {
 						$s .= ($s ? ' AND ' : '') . "$table.$field RLIKE '" . '[[:<:]]' . $word . '[[:>:]]' . "'";
 					}
 
-				} else if($isName && in_array($operator, array('%=', '^=', '$=', '%^=', '%$=', '*='))) {
+				} else if($isName && $isPartialOperator) {
 					// handle partial match to 'name' field
 					$value = $database->escapeStr($sanitizer->pageName($value, Sanitizer::toAscii));
 					if($operator == '^=' || $operator == '%^=') $value = "$value%";
 						else if($operator == '$=' || $operator == '%$=') $value = "%$value";
 						else $value = "%$value%";
 					$s = "$table.$field LIKE '$value'";
+						
+				} else if(($isPath && $isPartialOperator) || $isNumChildren) {
+					// match some other property that we need to launch a separate find to determine the IDs
+					// used for partial match of path (used when original selector is parent.path%=...), parent.property, etc.
+					$tempSelector = trim($this->getIncludeSelector($selectors) . ", $field$operator" . $sanitizer->selectorValue($value), ',');
+					$tempIDs = $this->wire('pages')->findIDs($tempSelector);
+					if(count($tempIDs)) {
+						$s = "$table.id IN(" . implode(',', $sanitizer->intArray($tempIDs)) . ')';
+					} else {
+						$s = "$table.id=-1"; // force non-match
+					}
 					
 				} else if(!$database->isOperator($operator)) {
-					throw new PageFinderSyntaxException("Operator '{$operator}' is not supported for '$field'."); 
+					throw new PageFinderSyntaxException("Operator '$operator' is not supported for '$field'.");
 
 				} else {
-					if($isName) $value = $sanitizer->pageName($value, Sanitizer::toAscii); 
+					$not = false;
+					if($isName) $value = $sanitizer->pageName($value, Sanitizer::toAscii);
+					if($field === 'status' && !ctype_digit("$value")) {
+						// named status
+						$statuses = Page::getStatuses();
+						if(!isset($statuses[$value])) throw new PageFinderSyntaxException("Unknown Page status: '$value'");
+						$value = (int) $statuses[$value];
+						if($operator === '=' || $operator === '!=') $operator = '&'; // bitwise
+						if($operator === '!=') $not = true;
+					}
 					$value = $database->escapeStr($value); 
 					$s = "$table." . $field . $operator . ((ctype_digit("$value") && $field != 'name') ? ((int) $value) : "'$value'");
+					if($not) $s = "NOT ($s)";
 				
 					if($field === 'status' && strpos($operator, '<') === 0 && $value >= Page::statusHidden && count($options['alwaysAllowIDs'])) {
 						// support the 'alwaysAllowIDs' option for specific page IDs when requested but would
@@ -2218,15 +2242,49 @@ class PageFinder extends Wire {
 			}
 
 			if($sql) {
-				if($SQL) $SQL .= " OR ($sql)"; 
-					else $SQL .= "($sql)";
+				if($SQL) {
+					$SQL .= " OR ($sql)";
+				} else {
+					$SQL .= "($sql)";
+				}
 			}
 		}
 
-		if(count($fields) > 1) $SQL = "($SQL)";
+		if(count($fields) > 1) {
+			$SQL = "($SQL)";
+		}
 
 		$query->where($SQL); 
 		//$this->nativeWheres[] = $SQL; 
+	}
+
+	/**
+	 * Get the include|status|check_access portions from given Selectors and return selector string for them
+	 * 
+	 * If given $selectors lacks an include or check_access selector, then it will pull from the
+	 * equivalent PageFinder setting if present in the original initiating selector. 
+	 * 
+	 * @param Selectors|string $selectors
+	 * @return string
+	 * 
+	 */
+	protected function getIncludeSelector($selectors) {
+		
+		if(!$selectors instanceof Selectors) $selectors = new Selectors($selectors);
+		$a = array();
+		
+		$include = $selectors->getSelectorByField('include');
+		if(empty($include) && $this->includeMode) $include = "include=$this->includeMode";
+		if($include) $a[] = $include;
+		
+		$status = $selectors->getSelectorByField('status');
+		if(!empty($status)) $a[] = $status;
+		
+		$checkAccess = $selectors->getSelectorByField('check_access');
+		if(empty($checkAccess) && $this->checkAccess === false && $this->includeMode !== 'all') $checkAccess = "check_access=0";
+		if($checkAccess) $a[] = $checkAccess;
+		
+		return implode(', ', $a);
 	}
 
 	/**

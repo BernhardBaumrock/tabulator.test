@@ -10,7 +10,7 @@
  * Base class that holds a message, source class, and timestamp.
  * Contains notices/messages used by the application to the user. 
  * 
- * ProcessWire 3.x, Copyright 2016 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2019 by Ryan Cramer
  * https://processwire.com
  *
  * @property string $text Text of notice
@@ -21,7 +21,14 @@
  *
  */
 abstract class Notice extends WireData {
-	
+
+	/**
+	 * Flag indicates notice should prepend (rather than append) to any existing notices
+	 *
+	 * @since 3.0.135
+	 *
+	 */
+	const prepend = 1;
 
 	/**
 	 * Flag indicates the notice is for when debug mode is on only
@@ -58,6 +65,14 @@ abstract class Notice extends WireData {
 	 *
 	 */
 	const allowMarkup = 32;
+
+	/**
+	 * Make notice anonymous (not tied to a particular class)
+	 * 
+	 * @since 3.0.135
+	 * 
+	 */
+	const anonymous = 65536;
 	
 	/**
 	 * Create the Notice
@@ -67,11 +82,21 @@ abstract class Notice extends WireData {
 	 *
 	 */
 	public function __construct($text, $flags = 0) {
-		$this->set('text', $text); 
-		$this->set('class', ''); 
-		$this->set('timestamp', time()); 
-		$this->set('flags', $flags); 
 		$this->set('icon', '');
+		$this->set('class', '');
+		$this->set('timestamp', time());
+		$this->set('flags', $flags); 
+		$this->set('text', $text); 
+	}
+	
+	public function set($key, $value) {
+		if($key === 'text' && strpos($value, 'icon-') === 0 && strpos($value, ' ')) {
+			list($icon, $value) = explode(' ', $value, 2);
+			list(,$icon) = explode('-', $icon, 2);
+			$icon = $this->wire('sanitizer')->name($icon);
+			if(strlen($icon)) $this->set('icon', $icon);
+		}
+		return parent::set($key, $value);
 	}
 
 	/**
@@ -198,7 +223,7 @@ class Notices extends WireArray {
 	 * ~~~~
 	 * 
 	 * @param Notice $item
-	 * @return $this
+	 * @return Notices|WireArray
 	 * 
 	 */
 	public function add($item) {
@@ -212,7 +237,7 @@ class Notices extends WireArray {
 			$item->flags = $item->flags | Notice::allowMarkup;
 		} else if(is_object($item->text) && $item->text instanceof Wire) {
 			$item->text = "<pre>" . $this->wire('sanitizer')->entities(print_r($item->text, true)) . "</pre>";
-			$item->flags = $item->flag | Notice::allowMarkup;
+			$item->flags = $item->flags | Notice::allowMarkup;
 		} else if(is_object($item->text)) {
 			$item->text = (string) $item->text; 
 		}
@@ -220,7 +245,8 @@ class Notices extends WireArray {
 		// check for duplicates
 		$dup = false; 
 		foreach($this as $notice) {
-			if($notice->text == $item->text && $notice->flags == $item->flags) $dup = true; 
+			/** @var Notice $notice */
+			if($notice->text == $item->text && $notice->flags == $item->flags && $notice->icon == $item->icon) $dup = true; 
 		}
 
 		if($dup) return $this;
@@ -240,7 +266,15 @@ class Notices extends WireArray {
 			if($item->flags & Notice::logOnly) return $this;
 		}
 		
-		return parent::add($item); 
+		if($item->flags & Notice::anonymous) {
+			$item->set('class', '');
+		}
+		
+		if($item->flags & Notice::prepend) {
+			return parent::prepend($item);	
+		} else {
+			return parent::add($item);
+		}
 	}
 	
 	protected function addLog($item) {

@@ -44,7 +44,7 @@ class ProcessWire extends Wire {
 	 * Reversion revision number
 	 * 
 	 */
-	const versionRevision = 133;
+	const versionRevision = 135;
 
 	/**
 	 * Version suffix string (when applicable)
@@ -62,7 +62,7 @@ class ProcessWire extends Wire {
 	 * Minimum required .htaccess file version
 	 * 
 	 */
-	const htaccessVersion = 300;
+	const htaccessVersion = 301;
 
 	/**
 	 * Status when system is booting
