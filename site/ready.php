@@ -8,6 +8,13 @@ $this->addHookAfter("InputfieldRockTabulator::getTranslations", function(HookEve
   $event->return = $langs;
 });
 
+// example how to add a directory to RockMarkup via hook
+// $this->addHookAfter("RockMarkup::getDirs", function(HookEvent $event) {
+//   $dirs = $event->return;
+//   $dirs[] = '/site/modules/MyModule/RockMarkup/';
+//   $event->return = $dirs;
+// });
+
 /**
  * Backup database on logout and ZIP it
  */
