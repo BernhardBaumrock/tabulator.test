@@ -4,9 +4,6 @@
 [submodule "site/modules/FieldtypeRockMarkup"]
 	path = site/modules/FieldtypeRockMarkup
 	url = git@github.com:BernhardBaumrock/FieldtypeRockMarkup.git
-[submodule "site/modules/FieldtypeRockTabulator"]
-	path = site/modules/FieldtypeRockTabulator
-	url = git@github.com:BernhardBaumrock/FieldtypeRockTabulator.git
 [submodule "site/modules/RockFinder"]
 	path = site/modules/RockFinder
 	url = git@github.com:BernhardBaumrock/RockFinder.git
