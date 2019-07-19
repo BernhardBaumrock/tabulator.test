@@ -1,0 +1,12 @@
+{
+    "file": "site\\modules\\RockTabulator\\examples\\rt08_multilang.php",
+    "textdomain": "site--modules--rocktabulator--examples--rt08_multilang-php",
+    "translations": {
+        "af95250c8bd6a488c605aa8d3f9db68c": {
+            "text": "bar DE"
+        },
+        "c14e72fc940160a48c7fa178ec50c038": {
+            "text": "foo DE"
+        }
+    }
+}

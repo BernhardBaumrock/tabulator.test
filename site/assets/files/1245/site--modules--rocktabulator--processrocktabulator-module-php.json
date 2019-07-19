@@ -1,0 +1,12 @@
+{
+    "file": "site\\modules\\RockTabulator\\ProcessRockTabulator.module.php",
+    "textdomain": "site--modules--rocktabulator--processrocktabulator-module-php",
+    "translations": {
+        "637616824fb5ea5b4d9e61e37f066180": {
+            "text": "AJAX Post Request senden"
+        },
+        "0f25faf412304ef543ef32793491927d": {
+            "text": "Browser Devtools \u00f6ffnen um den Output zu sehen"
+        }
+    }
+}

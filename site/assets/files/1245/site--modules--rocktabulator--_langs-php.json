@@ -1,7 +1,13 @@
 {
-    "file": "site\\modules\\FieldtypeRockTabulator\\_langs.php",
-    "textdomain": "site--modules--fieldtyperocktabulator--_langs-php",
+    "file": "site\\modules\\RockTabulator\\_langs.php",
+    "textdomain": "site--modules--rocktabulator--_langs-php",
     "translations": {
+        "7a918d0c02ef5ba9d4c62be7aa7159e5": {
+            "text": "Zeilen\/Seite"
+        },
+        "7fb55ed0b7a30342ba6da306428cae04": {
+            "text": "Erste"
+        },
         "400085f1f6d495bfa114bacb18286230": {
             "text": "Erste Seite"
         },
@@ -23,14 +29,14 @@
         "d4b6f9185273f54f5b467d6410acf827": {
             "text": "N\u00e4chste Seite"
         },
-        "7fb55ed0b7a30342ba6da306428cae04": {
-            "text": "Erste"
-        },
-        "7a918d0c02ef5ba9d4c62be7aa7159e5": {
-            "text": "Zeilen\/Seite"
-        },
         "60ce416f787a4149f9730f5b2621325e": {
             "text": "Spalte filtern..."
+        },
+        "16bfbf9c462762cf1cba4134ec53c504": {
+            "text": "Lade Daten"
+        },
+        "902b0d55fddef6f8d651fe1035b7d4bd": {
+            "text": "Fehler"
         }
     }
 }
