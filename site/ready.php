@@ -8,6 +8,19 @@ $this->addHookAfter("InputfieldRockTabulator::getTranslations", function(HookEve
   $event->return = $langs;
 });
 
+$this->addHookAfter("RockFinder2::getCol", function($event) {
+  $type = $event->arguments('type');
+  switch($type) {
+
+    // test custom
+    case 'test':
+      $event->return = function($data){
+        bd($data, 'test');
+      };
+      return;
+  }
+});
+
 // example how to add a directory to RockMarkup via hook
 // $this->addHookAfter("RockMarkup::getDirs", function(HookEvent $event) {
 //   $dirs = $event->return;

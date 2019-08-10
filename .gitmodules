@@ -13,3 +13,6 @@
 [submodule "site/modules/RockTabulator"]
 	path = site/modules/RockTabulator
 	url = git@github.com:BernhardBaumrock/RockTabulator.git
+[submodule "site/modules/RockFinder2"]
+	path = site/modules/RockFinder2
+	url = git@github.com:BernhardBaumrock/RockFinder2.git
