@@ -2,9 +2,10 @@
 // test finder
 $rf = new RockFinder2();
 $rf->name = "test";
-$rf->selector("template=cat, limit=10");
+$rf->find("parent=/data");
 $rf->addColumns([
   'title',
-  'test:xxx',
+  'status',
+  'created',
 ]);
 return $rf;
