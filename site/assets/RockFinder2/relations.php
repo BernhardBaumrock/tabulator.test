@@ -6,10 +6,11 @@ $persons->addColumns(['title', 'age']);
 // test finder
 $rf = new RockFinder2();
 $rf->name = "test";
-$rf->find("template=dog");
+$rf->find("template=cat, owner=1235|1236");
 $rf->addColumns([
   'title',
+  'owner',
+  'childcats',
 ]);
-$rf->addRelation('foo', ['foo'=>'bar']);
-$rf->addRelation('persons', $persons);
+$rf->addRelation('persons', $persons, 'owner');
 return $rf;
