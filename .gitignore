@@ -9,3 +9,6 @@
 ## others
 /site/assets/sql.txt
 /site/assets/RockGrid/tester.txt
+
+## ignore rockfinder backup history
+/site/assets/RockFinder2/bak
