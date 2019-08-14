@@ -13,3 +13,6 @@
 [submodule "site/modules/RockFinder2"]
 	path = site/modules/RockFinder2
 	url = git@github.com:BernhardBaumrock/RockFinder2.git
+[submodule "site/modules/RockMarkup2"]
+	path = site/modules/RockMarkup2
+	url = git@github.com:BernhardBaumrock/RockMarkup2.git
