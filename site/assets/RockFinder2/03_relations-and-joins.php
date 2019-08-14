@@ -6,7 +6,7 @@ $rf = new RockFinder2();
 $rf->find("template=cat, limit=20");
 $rf->addColumns([
   'title',
-  'owner',
+  'owner' => 'owner_aliasdemo',
   'kittens',
 ]);
 
