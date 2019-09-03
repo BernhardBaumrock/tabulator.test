@@ -21,7 +21,7 @@ $rf->addJoin('persons', 'owner');
  * You can easily hide columns from the final output
  * See https://bit.ly/2jXbyYR
  */
-$rf->hideColumns(['owner']);
+$rf->hideColumns(['id','owner']);
 
 // return finder
 return $rf;
