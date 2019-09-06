@@ -1,0 +1,9 @@
+{
+    "file": "site\\modules\\RockTabulator\\examples\\rt01_hello_world.php",
+    "textdomain": "site--modules--rocktabulator--examples--rt01_hello_world-php",
+    "translations": {
+        "a9a210774c7e815f8da466cfcec399f4": {
+            "text": "FOO DEUTSCH"
+        }
+    }
+}

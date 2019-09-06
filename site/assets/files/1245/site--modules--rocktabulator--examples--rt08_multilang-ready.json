@@ -1,0 +1,9 @@
+{
+    "file": "site\/modules\/RockTabulator\/examples\/rt08_multilang.ready",
+    "textdomain": "site--modules--rocktabulator--examples--rt08_multilang-ready",
+    "translations": {
+        "e4becf20ff1430c7c0822061e45102ab": {
+            "text": "Das ist eine tolle Tabelle!"
+        }
+    }
+}

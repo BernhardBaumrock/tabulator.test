@@ -698,7 +698,7 @@ class ProcessLanguageTranslator extends Process {
 			}
 
 			$ext = $file->getExtension();
-			if($ext != 'php' && $ext != 'module' && $ext != 'inc') continue;
+			if(!in_array($ext, $this->getExtensions())) continue;
 			$pathname = $file->getPathname();
 			$text = file_get_contents($pathname);
 			$found = false;
@@ -755,6 +755,14 @@ class ProcessLanguageTranslator extends Process {
 		}
 
 		return $files;
+	}
+
+	/**
+	 * Get all valid extensions for translatable files
+	 * @return array
+	 */
+	public function ___getExtensions() {
+		return ['php', 'module', 'inc'];
 	}
 }
 
