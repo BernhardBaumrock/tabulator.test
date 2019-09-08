@@ -12,13 +12,13 @@ git clone git@github.com:BernhardBaumrock/tabulator.test.git .
 git submodule update --init --recursive
 ```
 
-2) Restore the latest DB dump
+2) Restore the latest DB dump either manually or with this script
 
 ```
-/site/assets/backups/database/tabulator.sql  ---> DB name tabulator
+php site/assets/mysqldump/restore.php
 ```
 
-The site uses user `root` with no password to connect to mysql!
+The site and the script use user `root` with no password to connect to mysql!
 
 ## Login
 
