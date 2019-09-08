@@ -15,9 +15,9 @@ function unzip($file) {
 }
 
 // unzip dump
-$file = "site/assets/backups/database/tabulator.zip";
+$path = "site/assets/backups/database/tabulator";
 echo "Unzipping ZIP -> SQL...\n";
-unzip($file);
+unzip("$path.zip");
 echo "Unzip complete!\n";
 
 /**
@@ -104,6 +104,26 @@ function pdo() {
     \PDO::ATTR_EMULATE_PREPARES   => true,
     \PDO::ATTR_CURSOR             => \PDO::CURSOR_FWDONLY,
   ];
+
+  // create database if it does not exist
+  try {
+    $dbh = new \PDO("mysql:host=$host", $username, $password);
+    $dbh->exec("CREATE DATABASE IF NOT EXISTS `$database`")
+      or die(print_r($dbh->errorInfo(), true));
+  } catch (\PDOException $e) {
+    die("DB ERROR: ". $e->getMessage());
+  }
+  
+  try {
+    $dsn = $driver . ':host=' . $host . ';port=' . $port . ';dbname=' . $database . ';charset=utf8';
+    $pdo = new \PDO($dsn, $username, $password, $options);
+  } catch (\PDOException $e) {
+    $dsn = $driver . ':host=' . $host . ';port=' . $port . ';dbname=' . $database . ';charset=utf8';
+    $pdo = new \PDO($dsn, $username, $password, $options);
+  } catch (\Exception $e) {
+    die("The database connection failed. ERROR: " . $e->getMessage());
+  }
+
   try {
     $dsn = $driver . ':host=' . $host . ';port=' . $port . ';dbname=' . $database . ';charset=utf8';
     $pdo = new \PDO($dsn, $username, $password, $options);
@@ -120,3 +140,4 @@ $filePath = 'site/assets/backups/database/tabulator.sql';
 $res = importSqlFile(pdo(), $filePath);
 if ($res === false) die('ERROR');
 echo "DB imported";
+unlink("$path.sql");
