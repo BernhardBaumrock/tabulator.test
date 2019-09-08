@@ -32,15 +32,43 @@ $this->addHookAfter("RockFinder2::getCol", function($event) {
  * Backup database on logout and ZIP it
  */
 $this->addHookAfter("Session::logout", function(HookEvent $event) {
-  $db = $this->database->backups(); /** @var WireDatabaseBackup $db */
   $path = $this->config->paths->assets."backups/database/";
+  $config = $this->wire->config;
   $sql = $path."tabulator.sql";
   $zip = $path."tabulator.zip";
 
   $this->files->unlink($sql);
   $this->files->unlink($zip);
-  $file = $db->backup(['file' => $path]);
-  $this->files->rename($file, $sql);
+
+  // create dump
+  error_reporting(E_ALL);
+  require_once $this->wire->config->paths->assets . 'mysqldump/vendor/autoload.php';
+  include_once($this->wire->config->paths->assets . 'mysqldump/vendor/mysqldump-php/src/Ifsnop/main.inc.php');
+  $fecha = date('Ymd');
+  $dumpSettings = array(
+      'compress' => \Ifsnop\Mysqldump\Mysqldump::NONE,
+      'no-data' => false,
+      'add-drop-table' => true,
+      'single-transaction' => true,
+      'lock-tables' => true,
+      'add-locks' => true,
+      'extended-insert' => true,
+      'disable-foreign-keys-check' => true,
+      'skip-triggers' => false,
+      'add-drop-trigger' => true,
+      'databases' => true,
+      'add-drop-database' => true,
+      'hex-blob' => true
+  );
+  $dump = new \Ifsnop\Mysqldump\Mysqldump(
+      "mysql:host=".$config->dbHost.";dbname=".$config->dbName,
+      $config->dbUser,
+      $config->dbPass,
+      $dumpSettings
+  );
+  $dump->start($sql);
+
+  // zip sql file
   $this->files->zip($zip, [$sql]);
   $this->files->unlink($sql);
 });
