@@ -43,7 +43,6 @@ $this->addHookAfter("Session::logout", function(HookEvent $event) {
   // create dump
   error_reporting(E_ALL);
   require_once $this->wire->config->paths->assets . 'mysqldump/vendor/autoload.php';
-  include_once($this->wire->config->paths->assets . 'mysqldump/vendor/mysqldump-php/src/Ifsnop/main.inc.php');
   $fecha = date('Ymd');
   $dumpSettings = array(
       'compress' => \Ifsnop\Mysqldump\Mysqldump::NONE,
