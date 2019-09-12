@@ -170,6 +170,9 @@ var pwPanels = {
 			.attr('id', panelContainerID)
 			.attr('class', 'pw-panel-container pw-panel-container-closed')
 			.append($btn);
+
+		// save reference of toggler to panel
+		$panel.data('toggler', $toggler);
 		
 		$('body').append($panel);
 		
@@ -384,7 +387,8 @@ var pwPanels = {
 			}
 			
 			// trigger panel-closed event
-			$(document).trigger('pw-panel-closed', $panel);
+			$toggler = $($panel.data('toggler'));
+			$toggler.trigger('pw-panel-closed', $panel);
 
 		} else {
 
