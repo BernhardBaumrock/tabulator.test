@@ -5,7 +5,7 @@
  *
  * Manages and provides access to all the Template instances
  * 
- * ProcessWire 3.x, Copyright 2016 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2019 by Ryan Cramer
  * https://processwire.com
  * 
  * #pw-summary Manages and provides access to all the Templates.
@@ -16,6 +16,7 @@
  * @method bool|Saveable|Template clone(Saveable $item, $name = '') #pw-internal
  * @method array getExportData(Template $template) Export Template data for external use. #pw-advanced
  * @method array setImportData(Template $template, array $data) Given an array of Template export data, import it to the given Template. #pw-advanced
+ * @method void fileModified(Template $template) Hook called when a template detects that its file has been modified. #pw-hooker
  *
  */
 class Templates extends WireSaveableItems {
@@ -30,26 +31,26 @@ class Templates extends WireSaveableItems {
 	 * WireArray of all Template instances
 	 *
 	 */
-	protected $templatesArray; 
-
+	protected $templatesArray;
+	
 	/**
-	 * Path where Template files are stored
+	 * Templates that had changed files during this request
+	 *
+	 * @var array Array of Template objects indexed by id
 	 *
 	 */
-	protected $path; 
+	protected $fileModTemplates = array();
 
 	/**
 	 * Construct the Templates
 	 *
 	 * @param Fieldgroups $fieldgroups Reference to the Fieldgroups
-	 * @param string $path Path to where template files are stored
 	 *
 	 */
-	public function __construct(Fieldgroups $fieldgroups, $path) {
+	public function __construct(Fieldgroups $fieldgroups) {
 		$fieldgroups->wire($this);
 		$this->fieldgroups = $fieldgroups; 
 		$this->templatesArray = $this->wire(new TemplatesArray());
-		$this->path = $path;
 	}
 
 	/**
@@ -113,7 +114,7 @@ class Templates extends WireSaveableItems {
 	 *
 	 */
 	public function get($key) {
-		if($key == 'path') return $this->path;
+		if($key == 'path') return $this->wire('config')->paths->templates;
 		$value = $this->templatesArray->get($key); 
 		if(is_null($value)) $value = parent::get($key);
 		return $value; 
@@ -472,7 +473,8 @@ class Templates extends WireSaveableItems {
 	 * 
 	 * @param Template $template
 	 * @param bool $checkAccess Whether or not to check for user access to do this (default=false).
-	 * @param bool $getAll Specify true to return all possible parents (makes method always return a PageArray)
+	 * @param bool|int $getAll Specify true to return all possible parents (makes method always return a PageArray)
+	 *   Or specify int of maximum allowed `Page::status*` constant for items in returned PageArray (since 3.0.138). 
 	 * @return Page|NullPage|null|PageArray
 	 *
 	 */
@@ -481,6 +483,7 @@ class Templates extends WireSaveableItems {
 		$foundParent = null;
 		$foundParents = $getAll ? $this->wire('pages')->newPageArray() : null;
 		$foundParentQty = 0;
+		$maxStatus = is_int($getAll) && $getAll ? ($getAll * 2) : 0;
 
 		if($template->noShortcut || !count($template->parentTemplates)) return $foundParents;
 		if($template->noParents == -1) {
@@ -502,7 +505,11 @@ class Templates extends WireSaveableItems {
 			// sort=status ensures that a non-hidden page is given preference to a hidden page
 			$include = $checkAccess ? "unpublished" : "all";
 			$selector = "templates_id=$parentTemplate->id, include=$include, sort=status";
-			if(!$getAll) $selector .= ", limit=2";
+			if($maxStatus) {
+				$selector .= ", status<$maxStatus";
+			} else if(!$getAll) {
+				$selector .= ", limit=2";
+			}
 			$parentPages = $this->wire('pages')->find($selector);
 			$numParentPages = count($parentPages);
 
@@ -556,11 +563,13 @@ class Templates extends WireSaveableItems {
 	 * 
 	 * @param Template $template
 	 * @param bool $checkAccess Specify true to exclude parent pages that user doesn't have access to add pages to (default=false)
+	 * @param int $maxStatus Max allowed `Page::status*` constant (default=0 which means not applicable). Since 3.0.138
 	 * @return PageArray
 	 * 
 	 */
-	public function getParentPages(Template $template, $checkAccess = false) {
-		return $this->getParentPage($template, $checkAccess, true);
+	public function getParentPages(Template $template, $checkAccess = false, $maxStatus = 0) {
+		$getAll = $maxStatus ? $maxStatus : true;
+		return $this->getParentPage($template, $checkAccess, $getAll);
 	}
 	
 	/**
@@ -644,6 +653,44 @@ class Templates extends WireSaveableItems {
 		return $updated; 
 	}
 
+	/**
+	 * Hook called when a Template detects that its file has changed
+	 * 
+	 * Note that the hook is not called until something in the system (like a page render) asks for the template’s filename.
+	 * That’s because it would not be efficient for PW to check the file for every template in the system on every request. 
+	 * 
+	 * #pw-hooker
+	 * 
+	 * @param Template $template
+	 * @since 3.0.141
+	 * 
+	 */
+	public function ___fileModified(Template $template) {
+		if(empty($this->fileModTemplates)) {
+			// add hook on first call
+			$this->addHookAfter('ProcessWire::finished', $this, '_hookFinished');
+		}
+		$this->fileModTemplates[$template->id] = $template;
+	}
+	
+	/**
+	 * Saves templates that had modified files to update 'modified' and 'ns' properties after the request is complete
+	 *
+	 * #pw-internal
+	 *
+	 * @param HookEvent $e
+	 * @since 3.0.141
+	 *
+	 */
+	public function _hookFinished(HookEvent $e) {
+		if($e) {}
+		foreach($this->fileModTemplates as $id => $template) {
+			if($template->isChanged('modified') || $template->isChanged('ns')) {
+				$template->save();
+			}
+		}
+		$this->fileModTemplates = array();
+	}
 
 	/**
 	 * FUTURE USE: Is the parent/child relationship allowed?

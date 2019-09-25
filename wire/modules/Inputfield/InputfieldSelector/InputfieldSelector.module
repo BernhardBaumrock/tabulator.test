@@ -1187,8 +1187,8 @@ class InputfieldSelector extends Inputfield implements ConfigurableModule {
 					$template = $templates->get($templateID);
 					if(!$template) continue;
 					foreach($this->getParentPages($template) as $p) {
-						if(!$this->wire('user')->hasPermission('page-view', $p)) continue;
-						$info['options'][$p->id] = $p->get('title|path');
+						//if(!$this->wire('user')->hasPermission('page-view', $p)) continue;
+						$info['options'][$p->id] = $p->get('path');
 					}
 				}
 				asort($info['options']);
@@ -1270,7 +1270,7 @@ class InputfieldSelector extends Inputfield implements ConfigurableModule {
 							$inputfield->collapsed = $collapsed;
 							if(count($options) < 2
 								&& ($field->get('parent_id') || $field->get('template_id')) 
-								&& ($field->get('findPagesCode') || $field->get('findPagesSelector'))) {
+								&& ($field->get('findPagesCode') || $field->get('findPagesSelector') || $field->get('findPagesSelect'))) {
 								// see if we can locate options purely with the parent or template
 								$findSelector = array("include=unpublished, limit=500, sort=title, sort=name, ");
 								$parent_ids = $field->get('parent_ids');
@@ -1351,15 +1351,21 @@ class InputfieldSelector extends Inputfield implements ConfigurableModule {
 			if($type != 'checkbox' && !isset($this->systemFields[$fieldName]) && !isset($this->modifierFields[$fieldName])) {
 				// allow for a "None" option to find pages that have no selections for the field
 				$none = '0';
+				$hasNone = false;
 				foreach($options as $value => $label) {
 					// if select is using "0" as a literal selectable value, don't consider it as "None"
 					if($value === 0 || $value === '0') {
 						$none = '""';
+					} else if($value === '""' || $value === "''") {
+						// if it already literal quoted blank string then we should not show a none value at all
+						$hasNone = true;
 						break;
 					}
 				}
-				$selected = $selectedValue == $none || $selectedValue == '""' ? ' selected' : '';
-				$out .= "<option$selected value='$none'>" . $this->_('None') . "</option>";
+				if(!$hasNone) {
+					$selected = $selectedValue == $none || $selectedValue == '""' ? ' selected' : '';
+					$out .= "<option$selected value='$none'>" . $this->_('None') . "</option>";
+				}
 			}
 		
 			// render each option
@@ -1579,9 +1585,10 @@ class InputfieldSelector extends Inputfield implements ConfigurableModule {
 		$hasPageListSelect = strpos($field->get('inputfield'), 'PageListSelect') !== false;
 
 		// determine autocomplete state based on field settings and quantity of pages involved
-		if($field->get('findPagesSelector')) {
+		$findPagesSelector = $field->get('findPagesSelector|findPagesSelect');
+		if($findPagesSelector) {
 			// user-specified selector determines which pages match
-			$selector = trim($field->get('findPagesSelector'), ', ');
+			$selector = trim($findPagesSelector, ', ');
 			if(strpos($selector, 'page.') !== false) {
 				// remove page.something impossible reference, if present
 				$selector = preg_replace('/[_a-zA-Z0-9]+[=<>!]+page\.[_a-zA-Z0-9]+[\s,]*/', '', $selector);
@@ -2134,11 +2141,15 @@ class InputfieldSelector extends Inputfield implements ConfigurableModule {
 	public function getParentPages(Template $template) {
 		
 		$templates = $this->wire('templates');
-		$parentPages = $templates->getParentPages($template);
+		$parentPages = $templates->getParentPages($template, true, Page::statusUnpublished);
 		if($parentPages->count()) return $parentPages;
 		
 		$parentIDs = array();
-		$sql = 'SELECT parent_id FROM pages WHERE pages.templates_id=:templates_id GROUP BY parent_id LIMIT 500';
+		$sql = 
+			'SELECT parent_id FROM pages ' . 
+			'WHERE pages.templates_id=:templates_id ' . 
+			'AND status<' . Page::statusTrash . ' ' . 
+			'GROUP BY parent_id LIMIT 500';
 		$query = $this->wire('database')->prepare($sql);
 		$query->bindValue('templates_id', $template->id, \PDO::PARAM_INT);
 		$query->execute();
@@ -2150,6 +2161,9 @@ class InputfieldSelector extends Inputfield implements ConfigurableModule {
 	
 		$query->closeCursor();
 		$parentPages = count($parentIDs) ? $this->wire('pages')->getById($parentIDs) : new PageArray(); 
+		foreach($parentPages as $parentPage) {
+			if(!$parentPage->viewable(false)) $parentPages->remove($parentPage);
+		}
 		return $parentPages;
 	}
 

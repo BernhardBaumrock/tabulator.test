@@ -43,27 +43,26 @@ $this->addHookAfter("Session::logout", function(HookEvent $event) {
   // create dump
   error_reporting(E_ALL);
   require_once $this->wire->config->paths->assets . 'mysqldump/vendor/autoload.php';
-  $fecha = date('Ymd');
   $dumpSettings = array(
-      'compress' => \Ifsnop\Mysqldump\Mysqldump::NONE,
-      'no-data' => false,
-      'add-drop-table' => true,
-      'single-transaction' => true,
-      'lock-tables' => true,
-      'add-locks' => true,
-      'extended-insert' => true,
-      'disable-foreign-keys-check' => true,
-      'skip-triggers' => false,
-      'add-drop-trigger' => true,
-      'databases' => true,
-      'add-drop-database' => true,
-      'hex-blob' => true
+    'compress' => \Ifsnop\Mysqldump\Mysqldump::NONE,
+    'no-data' => false,
+    'add-drop-table' => true,
+    'single-transaction' => true,
+    'lock-tables' => true,
+    'add-locks' => true,
+    'extended-insert' => true,
+    'disable-foreign-keys-check' => true,
+    'skip-triggers' => false,
+    'add-drop-trigger' => true,
+    'databases' => true,
+    'add-drop-database' => true,
+    'hex-blob' => true
   );
   $dump = new \Ifsnop\Mysqldump\Mysqldump(
-      "mysql:host=".$config->dbHost.";dbname=".$config->dbName,
-      $config->dbUser,
-      $config->dbPass,
-      $dumpSettings
+    "mysql:host=".$config->dbHost.";dbname=".$config->dbName,
+    $config->dbUser,
+    $config->dbPass,
+    $dumpSettings
   );
   $dump->start($sql);
 

@@ -64,7 +64,11 @@
  * @property User $createdUser The user that created this page. Returns a User or a NullUser.
  * @property int $modified_users_id ID of last modified user. #pw-group-system
  * @property User $modifiedUser The user that last modified this page. Returns a User or a NullUser.
- * @property PagefilesManager $filesManager The object instance that manages files for this page. #pw-advanced
+ * @property PagefilesManager $filesManager The object instance that manages files for this page. #pw-group-files
+ * @property string $filesPath Get the disk path to store files for this page, creating it if it does not exist. #pw-group-files
+ * @property string $filesUrl Get the URL to store files for this page, creating it if it does not exist. #pw-group-files
+ * @property bool $hasFilePath Does this page have a disk path for storing files? #pw-group-files
+ * @property bool $hasFiles Does this page have one or more files in its files path? #pw-group-files
  * @property bool $outputFormatting Whether output formatting is enabled or not. #pw-advanced
  * @property int $sort Sort order of this page relative to siblings (applicable when manual sorting is used). #pw-group-system
  * @property int $index Index of this page relative to its siblings, regardless of sort (starting from 0). #pw-group-traversal
@@ -652,7 +656,11 @@ class Page extends WireData implements \Countable, WireMatchable {
 		'editUrl' => 'm',
 		'fieldgroup' => '',
 		'filesManager' => 'm',
+		'filesPath' => 'm',
+		'filesUrl' => 'm',
 		'hasChildren' => 'm',
+		'hasFiles' => 'm',
+		'hasFilesPath' => 'm',
 		'hasLinks' => 't',
 		'hasParent' => 'parents',
 		'hasReferences' => 't',
@@ -959,7 +967,12 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 */
 	public function setQuietly($key, $value) {
 		$this->quietMode = true; 
-		parent::setQuietly($key, $value);
+		if(isset($this->settings[$key]) && is_int($value)) {
+			// allow integer-only values in $this->settings to be set directly in quiet mode
+			$this->settings[$key] = $value;
+		} else {
+			parent::setQuietly($key, $value);
+		}
 		$this->quietMode = false;
 		return $this; 
 	}
@@ -1326,22 +1339,39 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 * 
 	 */
 	protected function getFieldSubfieldValue($key) {
-		$value = null;
+		
 		if(!strpos($key, '.')) return null;
-		if($this->outputFormatting()) {
-			// allow limited access to field.subfield properties when output formatting is on
-			// we only allow known custom fields, and only 1 level of subfield
-			list($key1, $key2) = explode('.', $key);
-			$field = $this->getField($key1); 
-			if($field && !($field->flags & Field::flagSystem)) {
-				// known custom field, non-system
-				// if neither is an API var, then we'll allow it
-				if(!$this->wire($key1) && !$this->wire($key2)) $value = $this->getDot("$key1.$key2");
-			}
-		} else {
-			// we allow any field.subfield properties when output formatting is off
+
+		// we allow any field.subfield properties when output formatting is off
+		if(!$this->outputFormatting()) return $this->getDot($key);
+		
+		// allow limited access to field.subfield properties when output formatting is on
+		// we only allow known custom fields, and only 1 level of subfield
+		$keys = explode('.', $key);
+		$key1 = $keys[0];
+		$key2 = $keys[1];
+		$field = $this->getField($key1);
+		
+		if(!$field || ($field->flags & Field::flagSystem)) return null;
+	
+		// test if any parts of key can potentially refer to API variables
+		$api = false;
+		foreach($keys as $k) {
+			if($this->wire($k)) $api = true;
+			if($api) break;
+		}
+		if($api) return null; // do not allow dereference of API variables
+		
+		// get first part of value
+		$value = $this->get($key1);
+		
+		// then get second part of value
+		if($value instanceof WireData) {
+			$value = $value->get($key2);
+		} else if($value instanceof Wire) {
 			$value = $this->getDot($key);
 		}
+		
 		return $value;
 	}
 
@@ -4005,7 +4035,7 @@ class Page extends WireData implements \Countable, WireMatchable {
 	/**
 	 * Return instance of PagefilesManager specific to this Page
 	 * 
-	 * #pw-group-advanced
+	 * #pw-group-files
 	 *
 	 * @return PagefilesManager
 	 *
@@ -4016,6 +4046,66 @@ class Page extends WireData implements \Countable, WireMatchable {
 		return $this->filesManager; 
 	}
 
+	/**
+	 * Does the page have a files path for storing files?
+	 * 
+	 * This will only check if files path exists, it will not create the path if it’s not already present.
+	 * 
+	 * #pw-group-files
+	 * 
+	 * @return bool
+	 * @since 3.0.138 Earlier versions must use the more verbose PagefilesManager::hasPath($page)
+	 * @see hasFiles(), filesManager()
+	 * 
+	 */
+	public function hasFilesPath() {
+		return PagefilesManager::hasPath($this);
+	}
+
+	/**
+	 * Does the page have a files path and one or more files present in it?
+	 * 
+	 * This will only check if files exist, it will not create the directory if it’s not already present.
+	 * 
+	 * #pw-group-files
+	 * 
+	 * @return bool
+	 * @since 3.0.138 Earlier versions must use the more verbose PagefilesManager::hasFiles($page)
+	 * @see hasFilesPath(), filesPath(), filesManager()
+	 * 
+	 */
+	public function hasFiles() {
+		return PagefilesManager::hasFiles($this); 
+	}
+
+	/**
+	 * Returns the path for files, creating it if it does not yet exist
+	 * 
+	 * #pw-group-files
+	 * 
+	 * @return string
+	 * @since 3.0.138 You can also use the equivalent but more verbose `$page->filesManager()->path()` in any version
+	 * @see filesUrl(), hasFilesPath(), hasFiles(), filesManager()
+	 * 
+	 */
+	public function filesPath() {
+		return $this->filesManager()->path();
+	}
+
+	/**
+	 * Returns the URL for files, creating it if it does not yet exist
+	 * 
+	 * #pw-group-files
+	 * 
+	 * @return string
+	 * @see filesPath(), filesManager()
+	 * @since 3.0.138 You can use the equivalent but more verbose `$page->filesManager()->url()` in any version
+	 * 
+	 */
+	public function filesUrl() {
+		return $this->filesManager()->url();
+	}
+	
 	/**
 	 * Prepare the page and it's fields for removal from runtime memory, called primarily by Pages::uncache()
 	 * 

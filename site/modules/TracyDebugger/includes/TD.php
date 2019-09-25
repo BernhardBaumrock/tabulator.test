@@ -93,8 +93,13 @@ class TD extends TracyDebugger {
         $options[Dumper::TRUNCATE] = isset($options['maxLength']) ? $options['maxLength'] : \TracyDebugger::getDataValue('maxLength');
         $options[Dumper::LOCATION] = \TracyDebugger::$fromConsole ? false : Debugger::$showLocation;
         if(version_compare(Debugger::VERSION, '2.6.0', '>=')) $options[Dumper::LAZY] = false;
+        echo '
+        <div class="tracy-inner" style="height:auto !important">
+            <div class="tracy-DumpPanel">';
         if($title) echo '<h2>'.$title.'</h2>';
-        echo static::generateDump($var, $options);
+        echo static::generateDump($var, $options) .
+        '   </div>
+        </div>';
     }
 
     /**
@@ -115,8 +120,13 @@ class TD extends TracyDebugger {
         $options[Dumper::TRUNCATE] = 9999;
         $options[Dumper::LOCATION] = \TracyDebugger::$fromConsole ? false : Debugger::$showLocation;
         if(version_compare(Debugger::VERSION, '2.6.0', '>=')) $options[Dumper::LAZY] = false;
+        echo '
+        <div class="tracy-inner" style="height:auto !important">
+            <div class="tracy-DumpPanel">';
         if($title) echo '<h2>'.$title.'</h2>';
-        echo static::generateDump($var, $options);
+        echo static::generateDump($var, $options) .
+        '   </div>
+        </div>';
     }
 
     /**
@@ -194,7 +204,7 @@ class TD extends TracyDebugger {
             }
 
             $tabs = '<ul class="tracyDumpTabs">';
-            $tabDivs = '<div style="clear:both;position:relative;">';
+            $tabDivs = '<div style="clear:both; position:relative;">';
             $expandCollapseAll = is_string($var) || is_null($var) ? '' : '<span class="tracyDumpsToggler tracyDumpsExpander" onclick="tracyDumpsToggler(this, true)" title="Expand Level">+</span> <span class="tracyDumpsToggler tracyDumpsCollapser" onclick="tracyDumpsToggler(this, false)" title="Collapse All">–</span>';
             $numTabs = 0;
             foreach(\TracyDebugger::getDataValue('dumpPanelTabs') as $i => $panel) {
