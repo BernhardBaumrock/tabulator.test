@@ -1,6 +1,8 @@
 <?php namespace ProcessWire;
 /** @var Wire $this */
 
+// test push
+
 // add global RockTabulator translation string
 $this->addHookAfter("InputfieldRockTabulator::getTranslations", function(HookEvent $event) {
   $langs = $event->return;
