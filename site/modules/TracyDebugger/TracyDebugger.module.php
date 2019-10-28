@@ -32,7 +32,7 @@ class TracyDebugger extends WireData implements Module, ConfigurableModule {
             'summary' => __('Tracy debugger from Nette with several PW specific custom tools.', __FILE__),
             'author' => 'Adrian Jones',
             'href' => 'https://processwire.com/talk/topic/12208-tracy-debugger/',
-            'version' => '4.19.33',
+            'version' => '4.19.35',
             'autoload' => 9999, // in PW 3.0.114+ higher numbers are loaded first - we want Tracy first
             'singular' => true,
             'requires'  => 'ProcessWire>=2.7.2, PHP>=5.4.4',
@@ -254,6 +254,7 @@ class TracyDebugger extends WireData implements Module, ConfigurableModule {
             "imagesInFieldListValues" => 0,
             "snippetsPath" => 'templates',
             "userSwitcherRestricted" => null,
+            "userSwitcherIncluded" => null,
             "todoIgnoreDirs" => 'git, svn, images, img, errors, sass-cache, node_modules',
             "todoScanModules" => null,
             "todoScanAssets" => null,
@@ -1407,9 +1408,16 @@ class TracyDebugger extends WireData implements Module, ConfigurableModule {
 
         }
 
-
         // exit now if not showing debug bar or user doesn't have 'development' access
         if(Debugger::$showBar == false || static::$allowedTracyUser !== 'development') return;
+
+
+        // check for any "bd_" wire variables and barDump them
+        $pwVars = function_exists('wire') ? $this->fuel : \ProcessWire\wire('all');
+        foreach($pwVars->getArray() as $key => $val) {
+            if(strpos($key, 'bd_') !== false) \TD::barDump($val, '$'.$key);
+        }
+
 
         // load base panel class
         require_once __DIR__ . '/includes/BasePanel.php';
@@ -3104,7 +3112,7 @@ class TracyDebugger extends WireData implements Module, ConfigurableModule {
         $f = $this->wire('modules')->get("InputfieldText");
         $f->attr('name', 'editor');
         $f->label = __('Editor protocol handler', __FILE__);
-        $f->description = __('Sets the Tracy `Debugger::$editor` variable. Enter the appropriate address to open your code editor of choice.'."\n".'This approach only works for OSX. For more instructions on Windows and Linux alternatives, [read here](https://pla.nette.org/en/how-open-files-in-ide-from-debugger).'."\n\n**Protocol handler helpers**\n[VSCode](https://github.com/shengyou/vscode-handler)\n[Sublime Text](https://github.com/saetia/sublime-url-protocol-mac)\n[PHP Storm](https://github.com/sanduhrs/phpstorm-url-handler)\n".' For other editors/IDEs, Google "protocol handler editorname".', __FILE__);
+        $f->description = __('Sets the Tracy `Debugger::$editor` variable. Enter the appropriate address to open your code editor of choice.'."\n".'This approach only works for OSX. For more instructions on Windows and Linux alternatives, [read here](https://pla.nette.org/en/how-open-files-in-ide-from-debugger).'."\n\n**Protocol handler helpers**\n[VSCode](https://github.com/shengyou/vscode-handler)\n[Sublime Text](https://github.com/saetia/sublime-url-protocol-mac)\n[PHP Storm](https://github.com/aik099/PhpStormProtocol)\n".' For other editors/IDEs, Google "protocol handler editorname".', __FILE__);
         $f->notes = __("`vscode://file/%file:%line`\n`subl://open/?url=file://%file&line=%line`\n`phpstorm://open?file=%file&line=%line`\n Initially configured for VSCode - change to work with your favorite editor.", __FILE__);
         $f->columnWidth = 50;
         if($data['editor']) $f->attr('value', $data['editor']);
@@ -3616,14 +3624,28 @@ class TracyDebugger extends WireData implements Module, ConfigurableModule {
 
         $f = $this->wire('modules')->get("InputfieldAsmSelect");
         $f->attr('name', 'userSwitcherRestricted');
-        $f->label = __('Restricted Roles', __FILE__);
+        $f->label = __('Excluded Roles', __FILE__);
         $f->description = __('Users with selected roles will not be available from the list of users to switch to.', __FILE__);
-        $f->notes = __('This can be useful if you use the User system to store frontend "members" and the system has a lot of users.', __FILE__);
+        $f->notes = __('These options can be useful if you use the User system to store frontend "members" and the system has a lot of users.', __FILE__);
+        $f->columnWidth = 50;
         $f->setAsmSelectOption('sortable', false);
         foreach($this->wire('roles') as $role) {
             $f->addOption($role->id, $role->name);
         }
         if($data['userSwitcherRestricted']) $f->attr('value', $data['userSwitcherRestricted']);
+        $fieldset->add($f);
+
+        $f = $this->wire('modules')->get("InputfieldAsmSelect");
+        $f->attr('name', 'userSwitcherIncluded');
+        $f->label = __('Included Roles', __FILE__);
+        $f->description = __('Only users with these selected roles will be available from the list of users to switch to. If none selected, then all will be available unless the excluded roles is populated.', __FILE__);
+        $f->notes = __('Only use one of these options: either excluded or included.', __FILE__);
+        $f->columnWidth = 50;
+        $f->setAsmSelectOption('sortable', false);
+        foreach($this->wire('roles') as $role) {
+            $f->addOption($role->id, $role->name);
+        }
+        if($data['userSwitcherIncluded']) $f->attr('value', $data['userSwitcherIncluded']);
         $fieldset->add($f);
 
         // requestLogger Panel

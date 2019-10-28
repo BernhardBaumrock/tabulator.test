@@ -596,6 +596,7 @@ class PageimageVariations extends Wire implements \IteratorAggregate, \Countable
 		$files = $this->wire('files');
 
 		foreach($variations as $variation) {
+			/** @var Pageimage $variation */
 			$filename = $variation->filename;
 			if(!is_file($filename)) continue;
 			if($options['dryRun']) {
@@ -605,7 +606,7 @@ class PageimageVariations extends Wire implements \IteratorAggregate, \Countable
 			}
 			if($success) $deletedFiles[] = $filename;
 
-			foreach($this->pageimage->extras() as $extra) {
+			foreach($variation->extras() as $extra) {
 				if(!$extra->exists()) continue;
 				if($options['dryRun']) {
 					$deletedFiles[] = $extra->filename();

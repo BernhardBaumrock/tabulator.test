@@ -914,6 +914,10 @@ function InputfieldImage($) {
 
 		$(document).on("click", function(e) {
 			var $el = $(e.target);
+			if(typeof clickLanguageTabActive != "undefined" && clickLanguageTabActive) {
+				// LanguageTabs dblclick event
+				return;
+			}
 
 			if($el.closest(".InputfieldImageEdit").length) {
 				closeEdit(null, $el.parents(".gridImages"));
@@ -1330,10 +1334,10 @@ function InputfieldImage($) {
 		$grid.click(toggleClick);
 		
 		if($target.hasClass('InputfieldImage')) {
-			$target.find('.InputfieldHeader').append($list).append($left).append($grid);
+			$target.children('.InputfieldHeader').append($list).append($left).append($grid);
 			defaultMode = getCookieData($target, 'mode');
 		} else {
-			$(".InputfieldImage .InputfieldHeader", $target).append($list).append($left).append($grid);
+			$(".InputfieldImage > .InputfieldHeader", $target).append($list).append($left).append($grid);
 		}
 
 		if(defaultMode == 'list') {
@@ -1448,9 +1452,17 @@ function InputfieldImage($) {
 	
 		// setup default values
 		if(typeof data[name] == "undefined") data[name] = {};
-		if(typeof data[name].size == "undefined") data[name].size = parseInt($inputfield.find('.gridImages').attr('data-size'));
-		if(typeof data[name].listSize == "undefined") data[name].listSize = 23;
-		if(typeof data[name].mode == "undefined") data[name].mode = $inputfield.find('.gridImages').attr('data-gridMode');
+		if(typeof data[name].size == "undefined" || !data[name].size) {
+			data[name].size = parseInt($inputfield.find('.gridImages').attr('data-size'));
+			if(!data[name].size) data[name].size = 130;
+		}
+		if(typeof data[name].listSize == "undefined" || !data[name].listSize) {
+			data[name].listSize = 23;
+		}
+		if(typeof data[name].mode == "undefined" || !data[name].mode) {
+			data[name].mode = $inputfield.find('.gridImages').attr('data-gridMode');
+			if(!data[name].mode) data[name].mode = 'list';
+		}
 		//if(typeof data[name].ragged == "undefined") data[name].ragged = $inputfield.find('.gridImages').attr('data-ragged') ? true : false;
 		
 		if(cookieData == null) cookieData = data; // cache
@@ -1467,8 +1479,7 @@ function InputfieldImage($) {
 			value = data[name][property];
 		}
 		
-		//console.log('getCookieData(' + property + ') ...');
-		//console.log(value);
+		// console.log(name + ' getCookieData(' + property + '): ' + value);
 		
 		return value;
 	}
@@ -2041,6 +2052,13 @@ function InputfieldImage($) {
 							} else {
 								setGridSize($inputfield, size);
 							}
+							setTimeout(function() {
+								var $inputfields = $markup.find('.Inputfield');
+								if($inputfields.length) {
+									InputfieldsInit($markup.find('.Inputfields'));
+									$inputfields.trigger('reloaded', ['InputfieldImageUpload']);
+								}
+							}, 250);
 						}).css("display", "");
 						$markup.addClass('InputfieldFileItemExisting');
 

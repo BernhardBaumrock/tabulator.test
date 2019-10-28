@@ -425,6 +425,34 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 	}
 
 	/**
+	 * Cached class parents indexed by Inputfield class name
+	 * 
+	 * @var array
+	 * 
+	 */
+	static protected $classParents = array();
+
+	/**
+	 * Get array of parent Inputfield classes for given Inputfield (excluding the base Inputfield class)
+	 * 
+	 * @param Inputfield|string $inputfield
+	 * @return array
+	 * 
+	 */
+	protected function classParents($inputfield) {
+		$p = &self::$classParents;
+		$c = is_object($inputfield) ? $inputfield->className() : $inputfield;
+		if(!isset($p[$c])) {
+			$p[$c] = array();
+			foreach(wireClassParents($inputfield) as $parentClass) {
+				if(strpos($parentClass, 'Inputfield') !== 0 || $parentClass === 'Inputfield') break;
+				$p[$c][] = $parentClass;
+			}
+		}
+		return $p[$c];	
+	}
+
+	/**
 	 * Render this Inputfield and the output of its children.
 	 * 
 	 * #pw-group-output
@@ -483,6 +511,24 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 			
 			if($collapsed == Inputfield::collapsedHidden) continue; 
 			if($collapsed == Inputfield::collapsedNoLocked || $collapsed == Inputfield::collapsedYesLocked) $renderValueMode = true;
+
+			// allow adding custom classes and/or attributes at runtime (since 3.0.143)
+			$classParents = $this->classParents($inputfield);
+			$classParents[] = $inputfieldClass;
+			foreach($classParents as $classParent) {
+				if(!isset($_markup[$classParent])) continue;
+				$markupParent = $_markup[$classParent];
+				foreach(array('class', 'wrapClass', 'headerClass', 'contentClass') as $classKey) {
+					if(!empty($markupParent[$classKey])) $inputfield->addClass($markupParent[$classKey], $classKey);
+				}
+				foreach(array('attr', 'wrapAttr') as $attrKey) {
+					if(!empty($markupParent[$attrKey]) && is_array($markupParent[$attrKey])) {
+						foreach($markupParent[$attrKey] as $k => $v) {
+							$inputfield->$attrKey($k, $v);
+						}
+					}
+				}
+			}
 			
 			$ffOut = $this->renderInputfield($inputfield, $renderValueMode);
 			if(!strlen($ffOut)) continue;
@@ -737,9 +783,10 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 	 */
 	public function ___renderInputfield(Inputfield $inputfield, $renderValueMode = false) {
 
+		$inputfieldID = $inputfield->attr('id');
 		$collapsed = $inputfield->getSetting('collapsed');
-		$ajaxInputfield = $collapsed == Inputfield::collapsedYesAjax ||
-			($collapsed == Inputfield::collapsedBlankAjax && $inputfield->isEmpty());
+		$ajaxInputfield = $collapsed == Inputfield::collapsedYesAjax || ($collapsed == Inputfield::collapsedBlankAjax && $inputfield->isEmpty());
+		$ajaxHiddenInput = "<input type='hidden' name='processInputfieldAjax[]' value='$inputfieldID' />";
 		$ajaxID = $this->wire('config')->ajax ? $this->wire('input')->get('renderInputfieldAjax') : '';
 		$required = $inputfield->getSetting('required');
 		
@@ -749,6 +796,8 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 			$ajaxInputfield = false;
 			if($collapsed == Inputfield::collapsedYesAjax) $inputfield->collapsed = Inputfield::collapsedYes;
 			if($collapsed == Inputfield::collapsedBlankAjax) $inputfield->collapsed = Inputfield::collapsedBlank;
+			// indicate to next processInput that this field can be processed
+			$inputfield->appendMarkup .= $ajaxHiddenInput;
 		}
 
 		$restoreValue = null; // value to restore, if we happen to modify it before render (renderValueMode only)
@@ -778,8 +827,6 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 		
 		if($ajaxInputfield) {
 			
-			$inputfieldID = $inputfield->attr('id');
-			
 			if($ajaxID && $ajaxID == $inputfieldID) {
 				// render ajax inputfield
 				$editable = $inputfield->editable();
@@ -787,7 +834,7 @@ class InputfieldWrapper extends Inputfield implements \Countable, \IteratorAggre
 					echo $inputfield->renderValue();
 				} else {
 					echo $inputfield->render();
-					echo "<input type='hidden' name='processInputfieldAjax[]' value='$inputfieldID' />";
+					echo $ajaxHiddenInput;
 				}
 				exit;
 				
