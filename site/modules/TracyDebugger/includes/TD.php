@@ -140,9 +140,10 @@ class TD extends TracyDebugger {
         array_push(\TracyDebugger::$dumpItems, $dumpItem);
 
         if(isset(\TracyDebugger::$showPanels) && in_array('dumpsRecorder', \TracyDebugger::$showPanels)) {
-            $dumpsRecorderItems = wire('session')->tracyDumpsRecorderItems ?: array();
+            $dumpsFile = wire('config')->paths->cache . 'TracyDebugger/dumps.json';
+            $dumpsRecorderItems = file_exists($dumpsFile) ? json_decode(file_get_contents($dumpsFile), true) : array();
             array_push($dumpsRecorderItems, $dumpItem);
-            wire('session')->tracyDumpsRecorderItems = $dumpsRecorderItems;
+            file_put_contents($dumpsFile, json_encode($dumpsRecorderItems));
         }
     }
 
@@ -151,10 +152,9 @@ class TD extends TracyDebugger {
      * @tracySkipLocation
      */
     private static function generateDump($var, $options) {
-
         // standard options for all dump/barDump variations
-        $options[Dumper::COLLAPSE] = 1;
-        $options[Dumper::COLLAPSE_COUNT] = 1;
+        $options[Dumper::COLLAPSE] = isset($options['collapse']) ? $options['collapse'] : \TracyDebugger::getDataValue('collapse');
+        $options[Dumper::COLLAPSE_COUNT] = isset($options['collapse_count']) ? $options['collapse_count'] : \TracyDebugger::getDataValue('collapse_count');
         $options[Dumper::DEBUGINFO] = isset($options['debugInfo']) ? $options['debugInfo'] : \TracyDebugger::getDataValue('debugInfo');
 
         $out = '<div style="margin: 0 0 10px 0">';

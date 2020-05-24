@@ -1,0 +1,1 @@
+d($fields->get('tags')->type->getOptions('tags'));
