@@ -143,6 +143,25 @@ $config->useFunctionsAPI = false;
 $config->useMarkupRegions = false;
 
 /**
+ * Use custom page classes? Specify boolean true to enable. 
+ *
+ * When enabled, if a class with name "[TemplateName]Page" (in ProcessWire namespace) exists
+ * in /site/classes/[TemplateName]Page.php, and it extends ProcessWire’s Page class, then the 
+ * Page will be created with that class rather than the default Page class. For instance, 
+ * template “home” would look for a class named “HomePage” and template "blog-post" (or 
+ * "blog_post") would look for a class named “BlogPostPage” (file: BlogPostPage.php). 
+ * 
+ * If you create a file named /site/classes/DefaultPage.php with a DefaultPage class within
+ * it (that extends Page), then it will be used for all pages that would otherwise use the 
+ * `Page` class. 
+ * 
+ * @var bool|string
+ * @since 3.0.152
+ *
+ */
+$config->usePageClasses = false;
+
+/**
  * Disable all HTTPS requirements?
  * 
  * Use this option only for development or staging environments, on sites where you are 
@@ -596,19 +615,60 @@ $config->contentTypes = array(
  */
 $config->fileContentTypes = array(
 	'?' => '+application/octet-stream',
+	'txt' => '+text/plain',
+	'csv' => '+text/csv',
 	'pdf' => '+application/pdf',
 	'doc' => '+application/msword',
-	'docx' => '+application/msword',
-	'xls' => '+application/excel',
-	'xlsx' => '+application/excel',
+	'docx' => '+application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'xls' => '+application/vnd.ms-excel',
+	'xlsx' => '+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+	'ppt' => '+application/vnd.ms-powerpoint',
+	'pptx' => '+application/vnd.openxmlformats-officedocument.presentationml.presentation',
 	'rtf' => '+application/rtf',
 	'gif' => 'image/gif',
 	'jpg' => 'image/jpeg',
 	'jpeg' => 'image/jpeg',
-	'png' => 'image/x-png',
-	'svg' => 'image/svg+xml'
+	'png' => 'image/png',
+	'svg' => 'image/svg+xml',
+	'webp' => 'image/webp',
+	'zip' => '+application/zip',
+	'mp3' => 'audio/mpeg',
 	);
 
+/**
+ * Named predefined image sizes and options
+ *
+ * Specify associative arrays of predefined image sizes indexed by name.
+ * Each item should have at least 'width' and 'height' indexes. But they can also have any
+ * other option accepted by the `Pageimage::size()` method `$options` argument.
+ *
+ * You can use your defined sizes by name in a Pageimage::size() call by specifying the
+ * size name rather than the `$width` argument, like this:
+ * ~~~~~~
+ * $image = $page->images->first();
+ * $landscape = $image->size('landscape');
+ * echo "<img src='$landscape->url' alt='$landscape->description' />";
+ * ~~~~~~
+ * Feel free to completely overwrite the default $config->imageSizes in your /site/config.php
+ * file * as this particular setting is not used by the core.
+ *
+ * @var array
+ * @since 3.0.151
+ *
+ */
+$config->imageSizes = array(
+	// Example 1: Landscape (try this one if you want to test the feature)
+	'landscape' => array('width' => 600, 'height' => 300),
+	
+	// Example 2: Thumbnails in admin (260 height, proportional width) 
+	// 'admin' => array('width' => 0, 'height' => 260),
+	
+	// Example 3: Portrait, with additional options: 
+	// 'portrait' => array('width' => 300, 'height' => 500, 'quality' => 80, 'suffix' => 'portrait'),
+	
+	// Example 4: Square size cropping towards (preserving) top/center (north): 
+	// 'squareNorth' => array('width' => 400, 'height' => 400, 'cropping' => 'north'),
+);
 
 /**
  * Image sizer options
@@ -1103,7 +1163,7 @@ $config->moduleCompile = true;
  * @var string
  *
  */
-$config->moduleServiceURL = 'http://modules.processwire.com/export-json/';
+$config->moduleServiceURL = 'https://modules.processwire.com/export-json/';
 
 /**
  * Modules service API key
@@ -1311,7 +1371,16 @@ $config->adminEmail = '';
  * @var string
  * 
  */
-$config->fatalErrorHTML = "<p style='background:crimson;color:white;padding:0.5em;font-family:sans-serif;'><b>{message}</b><br /><br /><small>{why}</small></p>";
+$config->fatalErrorHTML = "<p style='background:crimson;color:white;padding:1em;font-family:sans-serif;font-size:16px;line-height:20px;clear:both'>{message}<br /><br /><small>{why}</small></p>";
+
+/**
+ * HTTP code to send for fatal error (typically 500 or 503)
+ * 
+ * @var int
+ * @since 3.0.151
+ * 
+ */
+$config->fatalErrorCode = 500;
 
 /**
  * Settings for modal windows

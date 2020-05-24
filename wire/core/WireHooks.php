@@ -783,6 +783,16 @@ class WireHooks {
 		$cancelHooks = false;
 		$profiler = $this->wire->wire('profiler');
 		$hooks = null;
+		$methodExists = false;
+		
+		if($type === 'method') {
+			$methodExists = method_exists($object, $realMethod); 
+			if(!$methodExists && method_exists($object, $method)) {
+				// non-hookable method exists, indicating we may be in a manually called runHooks()
+				$methodExists = true;
+				$realMethod = $method;
+			}
+		}
 		
 		if(is_array($type)) {
 			// array of hooks to run provided in $type argument
@@ -793,12 +803,12 @@ class WireHooks {
 		$result = array(
 			'return' => null,
 			'numHooksRun' => 0,
-			'methodExists' => ($type === 'method' ? method_exists($object, $realMethod) : false),
+			'methodExists' => $methodExists,
 			'replace' => false,
 		);
 		
 		if($type === 'method' || $type === 'property' || $type === 'either') {
-			if(!$result['methodExists'] && !$this->isHookedOrParents($object, $method, $type)) {
+			if(!$methodExists && !$this->isHookedOrParents($object, $method, $type)) {
 				return $result; // exit quickly when we can
 			}
 		}
@@ -809,7 +819,7 @@ class WireHooks {
 
 			if($type === 'method') {
 				if($when === 'after' && $result['replace'] !== true) {
-					if($result['methodExists']) {
+					if($methodExists) {
 						$result['return'] = $object->_callMethod($realMethod, $arguments);
 					} else {
 						$result['return'] = null;
@@ -1014,13 +1024,16 @@ class WireHooks {
 		if(is_array($hookID) || strpos($hookID, ',')) {
 			return $this->removeHooks($object, $hookID);
 		}
-		if(!empty($hookID) && strpos($hookID, ':')) {
+		if(!empty($hookID) && substr_count($hookID, ':') === 2) {
+			// local hook ID ":100.0:methodName" or static hook ID "ClassName:100.0:methodName"
 			list($hookClass, $priority, $method) = explode(':', $hookID);
 			if(empty($hookClass)) {
+				// local hook
 				$localHooks = $object->getLocalHooks();
 				unset($localHooks[$method][$priority]);
 				$object->setLocalHooks($localHooks);
 			} else {
+				// static hook
 				unset($this->staticHooks[$hookClass][$method][$priority]);
 				if(empty($this->staticHooks[$hookClass][$method])) {
 					unset($this->hookClassMethodCache["$hookClass::$method"]);

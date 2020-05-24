@@ -17,12 +17,14 @@ require_once(__DIR__ . '/boot.php');
  * ~~~~~
  * #pw-body
  * 
- * ProcessWire 3.x, Copyright 2019 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2020 by Ryan Cramer
  * https://processwire.com
+ * 
+ * @property Fuel $fuel
  * 
  * @method init()
  * @method ready()
- * @method finished()
+ * @method finished(array $data)
  * 
  * 
  */
@@ -44,13 +46,13 @@ class ProcessWire extends Wire {
 	 * Reversion revision number
 	 * 
 	 */
-	const versionRevision = 143;
+	const versionRevision = 157;
 
 	/**
 	 * Version suffix string (when applicable)
 	 * 
 	 */
-	const versionSuffix = '';
+	const versionSuffix = 'dev';
 
 	/**
 	 * Minimum required index.php version, represented by the PROCESSWIRE define
@@ -111,7 +113,7 @@ class ProcessWire extends Wire {
 	const statusDownload = 32;
 
 	/**
-	 * Status when the request has been fully delivered
+	 * Status when the request has been fully delivered (but before a redirect)
 	 * 
 	 * All API variables available
 	 * 
@@ -256,8 +258,13 @@ class ProcessWire extends Wire {
 		$this->fuel = new Fuel();
 		$this->fuel->set('wire', $this, true);
 
+		/** @var WireClassLoader $classLoader */
 		$classLoader = $this->wire('classLoader', new WireClassLoader($this), true);
 		$classLoader->addNamespace((strlen(__NAMESPACE__) ? __NAMESPACE__ : "\\"), PROCESSWIRE_CORE_PATH);
+
+		if($config->usePageClasses) {
+			$classLoader->addSuffix('Page', $config->paths->classes);
+		}
 
 		$this->wire('hooks', new WireHooks($this, $config), true);
 
@@ -437,10 +444,11 @@ class ProcessWire extends Wire {
 			Debug::timer('boot'); 
 			Debug::timer('boot.load'); 
 		}
-
+		
+		$notices = new Notices();
 		$this->wire('urls', $config->urls); // shortcut API var
 		$this->wire('log', new WireLog(), true); 
-		$this->wire('notices', new Notices(), true); 
+		$this->wire('notices', $notices, true); 
 		$this->wire('sanitizer', new Sanitizer()); 
 		$this->wire('datetime', new WireDateTime());
 		$this->wire('files', new WireFileTools());
@@ -518,6 +526,7 @@ class ProcessWire extends Wire {
 		// populate admin URL before modules init()
 		$config->urls->admin = $config->urls->root . ltrim($pages->getPath($config->adminRootPageID), '/');
 
+		$notices->init();
 		if($this->debug) Debug::saveTimer('boot.load', 'includes all boot.load timers');
 		$this->setStatus(self::statusInit);
 	}
@@ -541,7 +550,7 @@ class ProcessWire extends Wire {
 	 * This also triggers init/ready functions for modules, when applicable.
 	 * 
 	 * @param int $status
-	 * @param array $data Associtaive array of any extra data to pass along to include files as locally scoped vars (3.0.142+)
+	 * @param array $data Associative array of any extra data to pass along to include files as locally scoped vars (3.0.142+)
 	 * 
 	 */
 	public function setStatus($status, array $data = array()) {
@@ -565,6 +574,7 @@ class ProcessWire extends Wire {
 		}
 
 		// set status to config
+		$prevStatus = $this->status;
 		$this->status = $status;
 		$config->status = $status;
 	
@@ -583,7 +593,9 @@ class ProcessWire extends Wire {
 
 		if($status == self::statusFinished) {
 			// internal finished always runs after any included finished file
-			$this->finished();
+			$data['prevStatus'] = $prevStatus;
+			$data['maintenance'] = true;
+			$this->finished($data);
 		} else if($status == self::statusReady) {
 			// additional 'admin' or 'site' options for ready status
 			if(!empty($files['readyAdmin']) && $config->admin === true) {
@@ -599,24 +611,27 @@ class ProcessWire extends Wire {
 	 * 
 	 * #pw-internal
 	 *
-	 * @param \Exception $e
+	 * @param \Throwable $e Exception or Error
 	 * @param string $reason
 	 * @param null $page
 	 * @param string $url
 	 * @since 3.0.142
 	 *
 	 */
-	public function setStatusFailed(\Exception $e, $reason = '', $page = null, $url = '') {
-		static $lastException = null;
-		if($lastException === $e) return;
+	public function setStatusFailed($e, $reason = '', $page = null, $url = '') {
+		static $lastThrowable = null;
+		if($lastThrowable === $e) return;
+		$isException = $e instanceof \Exception;
 		if(!$page instanceof Page) $page = new NullPage();
 		$this->setStatus(ProcessWire::statusFailed, array(
-			'exception' => $e,
+			'throwable' => $e, 
+			'exception' => $isException ? $e : null,
+			'error' => $isException ? null : $e, 
 			'failPage' => $page,
 			'reason' => $reason,
 			'url' => $url,
 		));
-		$lastException = $e;
+		$lastThrowable = $e;
 	}
 
 	/**
@@ -692,15 +707,26 @@ class ProcessWire extends Wire {
 	/**
 	 * Hookable ready for anyone that wants to hook when the request is finished
 	 * 
+	 * @param array $data Additional data for hooks (3.0.147+ only):
+	 *  - `maintenance` (bool): Allow maintenance to run? (default=true)
+	 *  - `prevStatus` (int): Previous status before finished status (render, download or failed).
+	 *  - `redirectUrl` (string): Contains redirect URL only if request ending with redirect (not present otherwise). 
+	 *  - `redirectType` (int): Contains redirect type 301 or 302, only if requestUrl property is also present.
+	 * 
 	 * #pw-hooker
 	 *
 	 */
-	protected function ___finished() {
+	protected function ___finished(array $data = array()) {
 		
 		$config = $this->wire('config');
 		$session = $this->wire('session');
 		$cache = $this->wire('cache'); 
 		$profiler = $this->wire('profiler');
+		
+		if($data) {} // data for hooks
+	
+		// if a hook cancelled maintenance then exit early 
+		if(isset($data['maintenance']) && $data['maintenance'] === false) return;
 		
 		if($session) $session->maintenance();
 		if($cache) $cache->maintenance();
@@ -734,8 +760,9 @@ class ProcessWire extends Wire {
 	}
 	
 	public function __get($key) {
-		if($key == 'shutdown') return $this->shutdown;
-		if($key == 'instanceID') return $this->instanceID;
+		if($key === 'fuel') return $this->fuel;
+		if($key === 'shutdown') return $this->shutdown;
+		if($key === 'instanceID') return $this->instanceID;
 		return parent::__get($key);
 	}
 
@@ -1079,6 +1106,7 @@ class ProcessWire extends Wire {
 		$cfg['paths'] = clone $cfg['urls'];
 		$cfg['paths']->set('root', $rootPath . '/');
 		$cfg['paths']->data('sessions', $cfg['paths']->assets . "sessions/");
+		$cfg['paths']->data('classes', $cfg['paths']->site . "classes/");
 
 		// Styles and scripts are CSS and JS files, as used by the admin application.
 	 	// But reserved here if needed by other apps and templates.

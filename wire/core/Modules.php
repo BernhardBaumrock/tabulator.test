@@ -1517,6 +1517,7 @@ class Modules extends WireArray {
 	 * 
 	 * @param string $file
 	 * @param string $moduleName
+	 * @return bool
 	 * 
 	 */
 	protected function includeModuleFile($file, $moduleName) {
@@ -1528,11 +1529,11 @@ class Modules extends WireArray {
 		if($wire1 !== $wire2) {
 			// multi-instance is active, don't autoload module if class already exists
 			// first do a fast check, which should catch any core modules 
-			if(class_exists(__NAMESPACE__ . "\\$moduleName", false)) return;
+			if(class_exists(__NAMESPACE__ . "\\$moduleName", false)) return true;
 			// next do a slower check, figuring out namespace
 			$ns = $this->getModuleNamespace($moduleName, array('file' => $file));
 			$className = trim($ns, "\\") . "\\$moduleName";
-			if(class_exists($className, false)) return;
+			if(class_exists($className, false)) return true;
 			// if this point is reached, module is not yet in memory in either instance
 			// temporarily set the $wire instance to 2nd instance during include()
 			ProcessWire::setCurrentInstance($wire2);
@@ -1543,11 +1544,15 @@ class Modules extends WireArray {
 
 		if($file) {
 			/** @noinspection PhpIncludeInspection */
-			include_once($file);
+			$success = @include_once($file);
+		} else {
+			$success = false;
 		}
 	
 		// set instance back, if multi-instance
 		if($wire1 !== $wire2) ProcessWire::setCurrentInstance($wire1);
+		
+		return (bool) $success;
 	}
 
 	/**
@@ -1575,7 +1580,8 @@ class Modules extends WireArray {
 	 * 
 	 * By default this method returns module class names matching the given prefix. 
 	 * To instead retrieve instantiated (ready-to-use) modules, specify boolean true
-	 * for the second argument. 
+	 * for the second argument. Regardless of `$load` argument all returned arrays
+	 * are indexed by module name.
 	 * 
 	 * ~~~~~
 	 * // Retrieve array of all Textformatter module names
@@ -1586,27 +1592,31 @@ class Modules extends WireArray {
 	 * ~~~~~
 	 * 
 	 * @param string $prefix Specify prefix, i.e. "Process", "Fieldtype", "Inputfield", etc.
-	 * @param bool|int $load Specify one of the following:
+	 * @param bool|int $load Specify one of the following (all indexed by module name):
 	 *  - Boolean true to return array of instantiated modules.
 	 *  - Boolean false to return array of module names (default).
 	 *  - Integer 1 to return array of module info for each matching module.
 	 *  - Integer 2 to return array of verbose module info for each matching module. 
+	 *  - Integer 3 to return array of Module or ModulePlaceholder objects (whatever current state is). Added 3.0.146.
 	 * @return array Returns array of module class names or Module objects. In either case, array indexes are class names.
 	 * 
 	 */
 	public function findByPrefix($prefix, $load = false) {
 		$results = array();
-		foreach($this as $key => $value) {
-			$className = wireClassName($value->className(), false);
-			if(strpos($className, $prefix) !== 0) continue;
-			if($load === 1) {
-				$results[$className] = $this->getModuleInfo($className); 
-			} else if($load === 2) {
-				$results[$className] = $this->getModuleInfoVerbose($className); 
+		foreach($this as $moduleName => $value) {
+			if(stripos($moduleName, $prefix) !== 0) continue;
+			if($load === false) {
+				$results[$moduleName] = $moduleName;
 			} else if($load === true) {
-				$results[$className] = $this->getModule($className);
+				$results[$moduleName] = $this->getModule($moduleName);
+			} else if($load === 1) {
+				$results[$moduleName] = $this->getModuleInfo($moduleName); 
+			} else if($load === 2) {
+				$results[$moduleName] = $this->getModuleInfoVerbose($moduleName);
+			} else if($load === 3) {
+				$results[$moduleName] = $value;
 			} else {
-				$results[$className] = $className;
+				$results[$moduleName] = $moduleName;
 			}
 		}
 		return $results;
@@ -1889,7 +1899,7 @@ class Modules extends WireArray {
 		$this->add($module); 
 		unset($this->installable[$class]);
 		
-		// note: the module's install is called here because it may need to know it's module ID for installation of permissions, etc. 
+		// note: the module's install is called here because it may need to know its module ID for installation of permissions, etc. 
 		if(method_exists($module, '___install') || method_exists($module, 'install')) {
 			try {
 				/** @var _Module $module */
@@ -2073,6 +2083,9 @@ class Modules extends WireArray {
 
 		$filename = $this->installable[$class];
 		$basename = basename($filename); 
+		
+		/** @var WireFileTools $fileTools */
+		$fileTools = $this->wire('files'); 
 
 		// double check that $class is consistent with the actual $basename	
 		if($basename === "$class.module" || $basename === "$class.module.php") {
@@ -2129,7 +2142,7 @@ class Modules extends WireArray {
 						continue; 
 					}
 					if($file->isDir()) {
-						$dirs[] = $file->getPathname();
+						$dirs[] = $fileTools->unixDirName($file->getPathname());
 						continue; 
 					}
 					if(in_array($file->getBasename(), $files)) continue; // skip known files
@@ -4128,7 +4141,7 @@ class Modules extends WireArray {
 	}
 
 	/**
-	 * Is the given namespace a unique recognized module namespace? If yes, returns the path to it. If not, returns boolean false;
+	 * Is the given namespace a unique recognized module namespace? If yes, returns the path to it. If not, returns boolean false.
 	 * 
 	 * #pw-internal
 	 * 
@@ -5045,11 +5058,14 @@ class Modules extends WireArray {
 	 */
 	public function compile($moduleName, $file = '', $namespace = null) {
 		
+		static $allowCompile = null;
+		if($allowCompile === null) $allowCompile = $this->wire('config')->moduleCompile;
+		
 		// if not given a file, track it down
 		if(empty($file)) $file = $this->getModuleFile($moduleName);
 
 		// don't compile when module compilation is disabled
-		if(!$this->wire('config')->moduleCompile) return $file;
+		if(!$allowCompile) return $file;
 	
 		// don't compile core modules
 		if(strpos($file, $this->coreModulesDir) !== false) return $file;

@@ -40,6 +40,7 @@
  * 
  * @property bool $protectCSRF Enables CSRF (cross site request forgery) protection on all PW forms, recommended for security. #pw-group-HTTP-and-input
  * 
+ * @property array $imageSizes Predefined image sizes (and options) indexed by name. See /wire/config.php for example. (3.0.151+) #pw-group-images
  * @property array $imageSizerOptions Options to set image sizing defaults. Please see the /wire/config.php file for all options and defaults. #pw-group-images
  * @property array $webpOptions Options for webp images. Please see /wire/config.php for all options. #pw-group-images
  * 
@@ -135,12 +136,14 @@
  * @property bool $logIP Include IP address in logs, when applicable? #pw-group-admin
  * @property string $defaultAdminTheme Default admin theme: AdminThemeDefault or AdminThemeReno #pw-group-admin
  * @property string $fatalErrorHTML HTML used for fatal error messages in HTTP mode. #pw-group-system
+ * @property int $fatalErrorCode HTTP code to send on fatal error (typically 500 or 503). #pw-group-system
  * @property array $modals Settings for modal windows #pw-group-admin
  * @property array $preloadCacheNames Cache names to preload at beginning of request #pw-group-system
  * @property bool $allowExceptions Allow Exceptions to propagate? (default=false, specify true only if you implement your own exception handler) #pw-group-system
  * @property bool $usePoweredBy Use the x-powered-by header? Set to false to disable. #pw-group-system
  * @property bool $useFunctionsAPI Allow most API variables to be accessed as functions? (see /wire/core/FunctionsAPI.php) #pw-group-system
  * @property bool $useMarkupRegions Enable support for front-end markup regions? #pw-group-system
+ * @property bool $usePageClasses Use custom Page classes in `/site/classes/[TemplateName]Page.php`? #pw-group-system #since 3.0.152
  * @property int $lazyPageChunkSize Chunk size for for $pages->findMany() calls. #pw-group-system
  * 
  * @property string $userAuthSalt Salt generated at install time to be used as a secondary/non-database salt for the password system. #pw-group-session
@@ -293,7 +296,7 @@ class Config extends WireData {
 			if(substr($url, -1) !== '/' && strpos($url, '?') === false && strpos($url, '#') === false) $url .= '/';
 		}
 		
-		if(!empty($path)) $this->paths->set($for, $dir);
+		if(!empty($dir)) $this->paths->set($for, $dir);
 		if(!empty($url)) $this->urls->set($for, $url);
 		
 		return $this;

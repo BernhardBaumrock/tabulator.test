@@ -495,6 +495,23 @@ abstract class Fieldtype extends WireData implements Module {
 	}
 
 	/**
+	 * Is given value one that should cause the DB row(s) to be deleted rather than saved?
+	 * 
+	 * Not applicable to Fieldtypes that override the savePageField() method with their own
+	 * implementation, unless they also use this method. 
+	 * 
+	 * @param Page $page
+	 * @param Field $field
+	 * @param mixed $value
+	 * @return bool
+	 * @since 3.0.150
+	 * 
+	 */
+	public function isDeleteValue(Page $page, Field $field, $value) {
+		return $value === $this->getBlankValue($page, $field); 
+	}
+
+	/**
 	 * Return whether the given value is considered empty or not.
 	 * 
 	 * This can be anything that might be present in a selector value and thus is
@@ -605,7 +622,7 @@ abstract class Fieldtype extends WireData implements Module {
 	 * 
 	 * #pw-internal
 	 * 
-	 * @param array Field $field
+	 * @param Field $field
 	 * @return array
 	 * 
 	 */
@@ -814,6 +831,21 @@ abstract class Fieldtype extends WireData implements Module {
 	}
 
 	/**
+	 * Get class name to use Field objects of this type (must be class that extends Field class)
+	 * 
+	 * Return blank if default class (Field) should be used. 
+	 * 
+	 * @param array $a Field data from DB (if needed)
+	 * @return string Return class name or blank to use default Field class
+	 * @since 3.0.146
+	 * 
+	 */
+	public function getFieldClass(array $a = array()) {
+		if($a) {} // ignore
+		return '';
+	}
+
+	/**
 	 * Returns verbose array of database schema information
 	 * 
 	 * Returned array includes the following (or any of these may properties may be requested individually):
@@ -952,16 +984,18 @@ abstract class Fieldtype extends WireData implements Module {
 
 		if(!$page->id || !$field->id) return null;
 
+		/** @var WireDatabasePDO $database */
 		$database = $this->wire('database');
-		$page_id = (int) $page->id; 
 		$schema = $this->getDatabaseSchema($field);
 		$table = $database->escapeTable($field->table);
 		$value = null;
 		$stmt = null;
-		
+	
+		/** @var DatabaseQuerySelect $query */
 		$query = $this->wire(new DatabaseQuerySelect());
 		$query = $this->getLoadQuery($field, $query); 
-		$query->where("$table.pages_id='$page_id'"); 
+		$bindKey = $query->bindValueGetKey($page->id); 
+		$query->where("$table.pages_id=$bindKey"); 
 		$query->from($table); 
 
 		try {
@@ -1103,7 +1137,7 @@ abstract class Fieldtype extends WireData implements Module {
 	 * @param Page $page Page object to save. 
 	 * @param Field $field Field to retrieve from the page. 
 	 * @return bool True on success, false on DB save failure.
-	 * @throws WireException
+	 * @throws WireException|\PDOException|WireDatabaseException
 	 *
 	 */
 	public function ___savePageField(Page $page, Field $field) {
@@ -1117,20 +1151,24 @@ abstract class Fieldtype extends WireData implements Module {
 		$database = $this->wire('database');
 		$value = $page->get($field->name);
 
-		// if the value is the same as the default, then remove the field from the database because it's redundant
-		if($value === $this->getBlankValue($page, $field)) return $this->deletePageField($page, $field); 
+		// if the value is one that should be deleted, then remove the field from the database because it's redundant
+		if($this->isDeleteValue($page, $field, $value)) {
+			return $this->deletePageField($page, $field);
+		}
 
 		$value = $this->sleepValue($page, $field, $value); 
 
 		$page_id = (int) $page->id; 
 		$table = $database->escapeTable($field->table); 
 		$schema = array();
+		$bindValues = array(':page_id' => $page_id);
 
 		if(is_array($value)) { 
 
 			$sql1 = "INSERT INTO `$table` (pages_id";
-			$sql2 = "VALUES('$page_id'";
+			$sql2 = "VALUES(:page_id";
 			$sql3 = "ON DUPLICATE KEY UPDATE ";
+			$n = 0;
 
 			foreach($value as $k => $v) {
 				$k = $database->escapeCol($k);
@@ -1141,8 +1179,9 @@ abstract class Fieldtype extends WireData implements Module {
 					if(empty($schema)) $schema = $this->getDatabaseSchema($field); 
 					$sql2 .= isset($schema[$k]) && stripos($schema[$k], ' DEFAULT NULL') ? ",NULL" : ",''";
 				} else {
-					$v = $database->escapeStr($v);
-					$sql2 .= ",'$v'";
+					$bindKey = ':v' . (++$n);
+					$bindValues[$bindKey] = $v;
+					$sql2 .= ",$bindKey";
 				}
 				
 				$sql3 .= "`$k`=VALUES(`$k`), ";
@@ -1155,18 +1194,36 @@ abstract class Fieldtype extends WireData implements Module {
 			if(is_null($value)) {
 				// check if schema explicitly allows NULL
 				$schema = $this->getDatabaseSchema($field); 
-				$value = isset($schema['data']) && stripos($schema['data'], ' DEFAULT NULL') ? "NULL" : "''";
+				$null = isset($schema['data']) && stripos($schema['data'], ' DEFAULT NULL') ? "NULL" : "''";
+				$sql = "INSERT INTO `$table` (pages_id, data) VALUES(:page_id, $null) ";	
 			} else {
-				$value = "'" . $database->escapeStr($value) . "'";
+				$bindValues[":value"] = $value;
+				$sql = "INSERT INTO `$table` (pages_id, data) VALUES(:page_id, :value) ";	
 			}
-
-			$sql = 	"INSERT INTO `$table` (pages_id, data) " . 
-					"VALUES('$page_id', $value) " . 
-					"ON DUPLICATE KEY UPDATE data=VALUES(data)";	
+			
+			$sql .= 'ON DUPLICATE KEY UPDATE data=VALUES(data)';
 		}
 		
 		$query = $database->prepare($sql);
-		$result = $query->execute();
+		foreach($bindValues as $bindKey => $bindValue) {
+			if(is_int($bindValue)) {
+				$query->bindValue($bindKey, $bindValue, \PDO::PARAM_INT);
+			} else {
+				$query->bindValue($bindKey, $bindValue);
+			}
+		}
+		
+		try {
+			$result = $query->execute();
+			
+		} catch(\PDOException $e) {
+			if($e->getCode() == 23000) {
+				$message = sprintf($this->_('Value not allowed for field “%2$s” because it is already in use'), $field->name);
+				throw new WireDatabaseException($message, $e->getCode(), $e);
+			} else {
+				throw $e;
+			}
+		}
 
 		return $result; 
 	}

@@ -821,7 +821,7 @@ class WireFileTools extends Wire {
 	 * @param string $filename Filename to write to
 	 * @param string|mixed $contents Contents to write to file
 	 * @param int $flags Flags to modify behavior:
-	 *  - `FILE_APPEND` (constant): Append to file if it already exists .
+	 *  - `FILE_APPEND` (constant): Append to file if it already exists.
 	 *  - `LOCK_EX` (constant): Acquire exclusive lock to file while writing.
 	 * @return int|bool Number of bytes written or boolean false on fail 
 	 * @throws WireException if given invalid $filename (since 3.0.118)
@@ -937,7 +937,7 @@ class WireFileTools extends Wire {
 		}
 
 		// render file and return output
-		$t = new TemplateFile();
+		$t = $this->wire(new TemplateFile()); /** @var TemplateFile $t */
 		$t->setThrowExceptions($options['throwExceptions']);
 		$t->setFilename($filename);
 

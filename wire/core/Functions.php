@@ -694,12 +694,14 @@ function wireIconMarkupFile($filename, $class = '') {
  *  - `decimal_point` (string|null): Decimal point character, or null to detect from locale (default=null). 
  *  - `thousands_sep` (string|null): Thousands separator, or null to detect from locale (default=null). 
  *  - `small` (bool): If no $small argument was specified, you can optionally specify it in this $options array.
+ *  - `type` (string): To force return value as specific type, specify one of: bytes, kilobytes, megabytes, gigabytes; or just: b, k, m, g. (3.0.148+ only)
  * @return string
  * 
  */
 function wireBytesStr($bytes, $small = false, $options = array()) {
 	
 	$defaults = array(
+		'type' => '',
 		'decimals' => 0, 
 		'decimal_point' => null,
 		'thousands_sep' => null,
@@ -714,19 +716,20 @@ function wireBytesStr($bytes, $small = false, $options = array()) {
 	
 	$options = array_merge($defaults, $options);
 	$locale = array();
+	$type = empty($options['type']) ? '' : strtolower(substr($options['type'], 0, 1));
 	
 	// determine size value and units label	
-	if($bytes < 1024) {
+	if($bytes < 1024 || $type === 'b') {
 		$val = $bytes;
 		if($small) {
 			$label = $val > 0 ? __('B', __FILE__) : ''; // bytes
 		} else {
 			$label = __('bytes', __FILE__);
 		}
-	} else if($bytes < 1000000) {
+	} else if($bytes < 1000000 || $type === 'k') {
 		$val = $bytes / 1024;
 		$label = __('kB', __FILE__); // kilobytes
-	} else if($bytes < 1073741824) {
+	} else if($bytes < 1073741824 || $type === 'm') {
 		$val = $bytes / 1024 / 1024;
 		$label = __('MB', __FILE__); // megabytes
 	} else { 
@@ -854,6 +857,101 @@ function wireClassName($className, $withNamespace = false, $verbose = false) {
 	return $className;
 }
 
+/**
+ * Get namespace for given class 
+ * 
+ * ~~~~~
+ * echo wireClassNamespace('Page'); // returns: "\ProcessWire\"
+ * echo wireClassNamespace('DirectoryIterator'); // returns: "\"
+ * echo wireClassNamespace('UnknownClass'); // returns "" (blank)
+ * 
+ * // Specify true for 2nd argument to make it include class name
+ * echo wireClassNamespace('Page', true); // outputs: \ProcessWire\Page
+ * 
+ * // Specify true for 3rd argument to find all matching classes 
+ * // and return array if more than 1 matches (or string if just 1): 
+ * $val = wireClassNamespace('Foo', true, true); 
+ * if(is_array($val)) {
+ *   // 2+ classes found, so array value is returned
+ *   // $val: [ '\Bar\Foo', '\Foo', '\Baz\Foo' ]
+ * } else {
+ *   // string value is returned when only one class matches
+ *   // $val: '\Bar\Foo'
+ * }
+ * ~~~~~
+ * 
+ * @param string|object $className
+ * @param bool $withClass Include class name in returned namespace? (default=false)
+ * @param bool $strict Return array of namespaces if multiple match? (default=false)
+ * @return string|array Returns one of the following:
+ *  - String of `\Namespace\` (leading+trailing backslashes) if namespace found.
+ *  - String of `\` if class in root namespace.
+ *  - Blank string if unable to find namespace for class.
+ *  - Array of namespaces only if $strict option is true AND multiple namespaces were found for class.
+ *  - If the $withClass option is true, then return value(s) have class, i.e. `\Namespace\ClassName`.
+ * @since 3.0.150
+ * 
+ */
+function wireClassNamespace($className, $withClass = false, $strict = false) {
+	
+	$bs = "\\";
+	$ns = "";
+	
+	if(is_object($className)) {
+		$className = get_class($className);
+	}
+	
+	if(strpos($className, $bs) !== false) {
+		// namespace is already included in class name
+		$a = explode($bs, $className);
+		array_pop($a); // class
+		$ns = count($a) ? implode($bs, $a) : $bs;
+		if(empty($ns)) $ns = $bs;
+		$strict = false; // strict not necessary
+
+	} else if(class_exists(__NAMESPACE__ . "$bs$className")) {
+		// class in ProcessWire namespace
+		$ns = __NAMESPACE__;
+		
+	} else if(class_exists("$bs$className")) {
+		// class in root namespace
+		$ns = $bs;
+	}
+	
+	if(empty($ns) || $strict) {
+		// hunt down namespace from declared classes
+		$nsa = array();
+		$name = strtolower($className); 
+		foreach(get_declared_classes() as $class) {
+			if(strpos($class, $bs) === false) {
+				// root namespace
+				if(!$strict) continue;
+				$class = "$bs$class";
+			}
+			if(stripos($class, "$bs$className") === false) continue;
+			if(strtolower(substr($class, -1 * strlen($className))) !== $name) continue;
+			$a = explode($bs, trim($class, $bs));
+			$cn = array_pop($a);
+			$ns = count($a) ? implode($bs, $a) : $bs;
+			if($ns && $ns !== $bs) $ns = $bs . trim($ns, $bs) . $bs;
+			if($withClass) $ns .= $cn;
+			$nsa[] = $ns;
+			if(!$strict) break;
+		}
+		$n = count($nsa);
+		// return array now for multi-match strict mode
+		if($strict && $n > 1) return $nsa; 
+		$ns = $n ? reset($nsa) : '';
+		
+	} else if($ns && $ns !== $bs) {
+		// format with leading/trailing backslashes, i.e. \Namespace\
+		$ns = $bs . trim($ns, $bs) . $bs;
+		if($withClass) $ns .= $className;
+	}
+	
+	return $ns;
+}
+
 
 /**
  * Does the given class name exist?
@@ -947,7 +1045,12 @@ function wireClassParents($className, $autoload = true) {
 		$className = wireClassName($className, true);
 		if(!class_exists($className, false)) {
 			$_className = wireClassName($className, false);
-			if(class_exists("\\$_className")) $className = $_className;
+			if(class_exists("\\$_className")) {
+				$className = $_className;
+			} else {
+				$ns = wireClassNamespace($_className); 
+				if($ns) $className = $ns . $_className;
+			}
 		}
 		$parents = class_parents(ltrim($className, "\\"), $autoload);
 	}
@@ -1084,6 +1187,8 @@ function wireCount($value) {
  * 
  * - It returns true for Countable objects that have 0 items. 
  * - It considers whitespace-only strings to be empty.
+ * - It considers WireNull objects (like NullPage or any others) to be empty (3.0.149+).
+ * - It uses the string value of objects that can be typecast strings (3.0.150+).
  * - You cannot pass it an undefined variable without triggering a PHP warning. 
  * 
  * ~~~~~
@@ -1114,8 +1219,12 @@ function wireEmpty($value) {
 	if(empty($value)) return true;
 	if(is_object($value)) {
 		if($value instanceof \Countable && !count($value)) return true;
-	} else if(is_string($value)) {
-		if(!strlen(trim($value))) return true;
+		if($value instanceof WireNull) return true; // 3.0.149+
+		if(method_exists($value, '__toString')) $value = (string) $value;
+	}
+	if(is_string($value)) {
+		$value = trim($value);
+		if(empty($value)) return true;
 	}
 	return false;
 }
@@ -1208,6 +1317,24 @@ function wireRegion($key, $value = null) {
 	}
 
 	return $result;
+}
+
+/**
+ * Stop execution with a 404 unless redirect URL available (for front-end use)
+ * 
+ * This is an alternative to using a manual `throw new Wire404Exception()` and is recognized by
+ * PW as a front-end 404 where PagePathHistory (or potentially other modules) are still allowed
+ * to change the behavior of the request from a 404 to something else (like a 301 redirect). 
+ * 
+ * #pw-group-common
+ * 
+ * @param string $message Optional message to send to Exception message argument (not used in output by default)
+ * @throws Wire404Exception
+ * @since 3.0.146
+ * 
+ */
+function wire404($message = '') {
+	throw new Wire404Exception($message, Wire404Exception::codeFunction); 
 }
 
 /**

@@ -54,7 +54,7 @@ class PageimageVariations extends Wire implements \IteratorAggregate, \Countable
 	 * 
 	 * This method is also here to implement the Countable interface. 
 	 * 
-	 * @param array $options See options for find() emthod
+	 * @param array $options See options for find() method
 	 * @return int
 	 * 
 	 */
@@ -253,7 +253,7 @@ class PageimageVariations extends Wire implements \IteratorAggregate, \Countable
 			unset($info['parent'], $info['parentName'], $info['suffixAll']);
 		}
 
-		if(!$this->pageimage->original && $info['original']) {
+		if(!$this->pageimage->__isset('original') && $info['original']) {
 			$original = $this->pagefiles->get($info['original']);
 			if($original) $this->pageimage->setOriginal($original);
 		}
@@ -590,10 +590,12 @@ class PageimageVariations extends Wire implements \IteratorAggregate, \Countable
 		$variations = $this->find($options);
 		if(!empty($options['dryrun'])) $defaults['dryRun'] = $options['dryrun']; // case insurance
 		$options = array_merge($defaults, $options); // placement after getVariations() intended
-		$deletedFiles = array();
 
 		/** @var WireFileTools $files */
 		$files = $this->wire('files');
+		$deletedFiles = array();
+		
+		$this->removeExtras($this->pageimage, $deletedFiles, $options);
 
 		foreach($variations as $variation) {
 			/** @var Pageimage $variation */
@@ -605,19 +607,31 @@ class PageimageVariations extends Wire implements \IteratorAggregate, \Countable
 				$success = $files->unlink($filename, true);
 			}
 			if($success) $deletedFiles[] = $filename;
-
-			foreach($variation->extras() as $extra) {
-				if(!$extra->exists()) continue;
-				if($options['dryRun']) {
-					$deletedFiles[] = $extra->filename();
-				} else if($extra->unlink()) {
-					$deletedFiles[] = $extra->filename();
-				}
-			}
+			$this->removeExtras($variation, $deletedFiles, $options);
 		}
 
 		if(!$options['dryRun']) $this->variations = null;
 
 		return ($options['dryRun'] || $options['getFiles'] ? $deletedFiles : $this);
+	}
+
+	/**
+	 * Remove extras
+	 * 
+	 * @param Pageimage $pageimage
+	 * @param array $deletedFiles
+	 * @param array $options See options for remove() method
+	 * 
+	 */
+	protected function removeExtras(Pageimage $pageimage, array &$deletedFiles, array $options) {
+		foreach($pageimage->extras() as $extra) {
+			if(!$extra->exists()) {
+				// nothing to do
+			} else if(!empty($options['dryRun'])) {
+				$deletedFiles[] = $extra->filename();
+			} else if($extra->unlink()) {
+				$deletedFiles[] = $extra->filename();
+			}
+		}
 	}
 }

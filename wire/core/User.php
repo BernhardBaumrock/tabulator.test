@@ -291,7 +291,7 @@ class User extends Page {
 	 * 
 	 * #pw-hooker
 	 *
-	 * @param string $name Permission name
+	 * @param string|Permission $name Permission name
 	 * @param Template|int|string $template Template object, name or ID
 	 * @return bool
 	 * @throws WireException
@@ -470,7 +470,7 @@ class User extends Page {
 	 *
 	 */
 	public function editUrl($options = array()) {
-		return str_replace('/page/edit/', '/access/users/edit/', parent::editUrl());
+		return str_replace('/page/edit/', '/access/users/edit/', parent::editUrl($options));
 	}
 
 	/**

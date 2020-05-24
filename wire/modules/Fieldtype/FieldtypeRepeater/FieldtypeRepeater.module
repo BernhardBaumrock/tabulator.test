@@ -199,6 +199,21 @@ class FieldtypeRepeater extends Fieldtype implements ConfigurableModule {
 		$initFields[$className] = 1; 
 	}
 	 */
+	
+	/**
+	 * Get class name to use Field objects of this type (must be class that extends Field class)
+	 *
+	 * Return blank if default class (Field) should be used.
+	 *
+	 * @param array $a Field data from DB (if needed)
+	 * @return string Return class name or blank to use default Field class
+	 * @since 3.0.146
+	 *
+	 */
+	public function getFieldClass(array $a = array()) {
+		require_once(dirname(__FILE__) . '/RepeaterField.php');
+		return 'RepeaterField';
+	}
 
 	/**
 	 * Get the class used for repeater Page objects
@@ -685,6 +700,7 @@ class FieldtypeRepeater extends Fieldtype implements ConfigurableModule {
 	 *
 	 */
 	public function getBlankRepeaterPage(Page $page, Field $field) {
+		if($this->deletePageField === $field->get('parent_id')) $this->deletePageField = 0;
 		$parent = $this->getRepeaterPageParent($page, $field); 
 		$class = $this->getPageClass();
 		$readyPage = $this->wire(new $class());
@@ -1052,7 +1068,7 @@ class FieldtypeRepeater extends Fieldtype implements ConfigurableModule {
 		$parent = $repeaterParent->child('name=' . self::repeaterPageNamePrefix . $page->id . ', include=all');
 		if($parent->id) return $parent;
 
-		$parent = $this->wire('pages')->newPage(array('template' => $repeaterParent->template));
+		$parent = $this->wire('pages')->newPage($repeaterParent->template);
 		$parent->parent = $repeaterParent; 
 		$parent->name = self::repeaterPageNamePrefix . $page->id;
 		$parent->title = $page->name;
@@ -1096,7 +1112,7 @@ class FieldtypeRepeater extends Fieldtype implements ConfigurableModule {
 		$parent = $repeatersRootPage->child("name=$parentName, include=all"); 
 
 		if(!$parent->id) {
-			$parent = $this->wire('pages')->newPage(array('template' => $repeatersRootPage->template));
+			$parent = $this->wire('pages')->newPage($repeatersRootPage->template);
 			$parent->parent = $repeatersRootPage; 
 			$parent->name = $parentName;
 			$parent->title = $field->name; 
@@ -1919,7 +1935,7 @@ class FieldtypeRepeater extends Fieldtype implements ConfigurableModule {
 		$page = $adminRoot->child("name=repeaters, template=admin, include=all"); 
 		
 		if(!$page->id) {
-			$page = $pages->newPage(array('template' => 'admin'));
+			$page = $pages->newPage('admin');
 			$page->parent = $adminRoot;
 			$page->status = Page::statusHidden | Page::statusLocked | Page::statusSystemID;
 			$page->name = 'repeaters';

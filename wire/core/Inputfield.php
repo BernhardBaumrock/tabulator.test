@@ -87,6 +87,7 @@
  * ===================
  * @property int|bool $required Set to true (or 1) to make input required, or false (or 0) to make not required (default=0). #pw-group-behavior
  * @property string $requiredIf Optional conditions under which input is required (selector string). #pw-group-behavior
+ * @property int|bool|null $requiredAttr Use HTML5 “required” attribute when used by Inputfield and $required is true? Default=null. #pw-group-behavior
  * @property InputfieldWrapper|null $parent The parent InputfieldWrapper for this Inputfield or null if not set. #pw-internal
  * @property null|bool|Fieldtype $hasFieldtype The Fieldtype using this Inputfield, or boolean false when known not to have a Fieldtype, or null when not known. #pw-group-other
  * @property null|Field $hasField The Field object associated with this Inputfield, or null when not applicable or not known. #pw-group-other
@@ -465,12 +466,15 @@ abstract class Inputfield extends WireData implements Module {
 	 *
 	 */ 
 	public function get($key) {	
-		if($key == 'label' && !parent::get('label')) {
+		if($key === 'label') { 
+			$value = parent::get('label');
+			if(strlen($value)) return $value;
 			if($this->skipLabel & self::skipLabelBlank) return '';
 			return $this->attributes['name']; 
 		}
-		if($key == 'attributes') return $this->attributes; 
-		if($key == 'parent') return $this->parent; 
+		if($key === 'name' || $key === 'value' || $key === 'id') return $this->getAttribute($key);
+		if($key === 'attributes') return $this->attributes; 
+		if($key === 'parent') return $this->parent; 
 		if(($value = $this->wire($key)) !== null) return $value; 
 		if(array_key_exists($key, $this->attributes)) return $this->attributes[$key]; 
 		return parent::get($key); 
@@ -878,11 +882,13 @@ abstract class Inputfield extends WireData implements Module {
 	 *
 	 */
 	public function getAttributes() {
-		$attributes = array();
-		foreach($this->attributes as $key => $value) {
-			$attributes[$key] = $value; 
+		$attrs = $this->attributes;
+		if(!isset($attrs['required']) && $this->getSetting('required') && $this->getSetting('requiredAttr')) { 
+			if(!$this->getSetting('showIf') && !$this->getSetting('requiredIf')) {
+				$attrs['required'] = 'required';
+			}
 		}
-		return $attributes; 
+		return $attrs; 
 	}
 
 	/**
@@ -1277,7 +1283,7 @@ abstract class Inputfield extends WireData implements Module {
 	/**
 	 * Process input for this Inputfield directly from the POST (or GET) variables 
 	 * 
-	 * This method should pull the value from the given `$input` ragument, sanitize/validate it, and 
+	 * This method should pull the value from the given `$input` argument, sanitize/validate it, and 
 	 * populate it to the `value` attribute of this Inputfield. 
 	 * 
 	 * Inputfield modules should implement this method if the built-in one here doesn't solve their need.
@@ -1492,6 +1498,22 @@ abstract class Inputfield extends WireData implements Module {
 			$field->description = $this->_("If checked, a value will be required for this field.");
 			$field->collapsed = $this->getSetting('required') ? Inputfield::collapsedNo : Inputfield::collapsedYes; 
 			$fields->add($field);
+	
+			$requiredAttr = $this->getSetting('requiredAttr'); 
+			if($requiredAttr !== null) {
+				// Inputfield must have set requiredAttr to some non-null value before this will appear as option in config
+				$field->columnWidth = 50; // required checkbox
+				/** @var InputfieldCheckbox $f */
+				$f = $this->modules->get('InputfieldCheckbox');
+				$f->attr('name', 'requiredAttr');
+				$f->label = $this->_('Also use HTML5 “required” attribute?');
+				$f->showIf = "required=1, showIf='', requiredIf=''";
+				$f->description = $this->_('Use only on fields *always* visible to the user.');
+				$f->icon = 'html5';
+				$f->columnWidth = 50;
+				if($requiredAttr) $f->attr('checked', 'checked');
+				$fields->add($f);
+			}
 		
 			/** @var InputfieldText $field */
 			$field = $this->modules->get('InputfieldText'); 
@@ -1569,6 +1591,7 @@ abstract class Inputfield extends WireData implements Module {
 			'columnWidth', 
 			'required', 
 			'requiredIf', 
+			'requiredAttr',
 			'showIf'
 		);
 	}

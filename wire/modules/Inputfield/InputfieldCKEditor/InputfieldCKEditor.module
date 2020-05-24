@@ -34,7 +34,7 @@ class InputfieldCKEditor extends InputfieldTextarea {
 	public static function getModuleInfo() {
 		return array(
 			'title' => 'CKEditor',
-			'version' => 162, 
+			'version' => 163, 
 			'summary' => __('CKEditor textarea rich text editor.', __FILE__),
 			'installs' => array('MarkupHTMLPurifier'), 
 			);
@@ -85,7 +85,7 @@ class InputfieldCKEditor extends InputfieldTextarea {
 	 * Version number for CKEditor directory
 	 *
 	 */
-	const CKEDITOR_VERSION = '4.12.1';
+	const CKEDITOR_VERSION = '4.14.0';
 
 	/**
 	 * Instance of MarkupHTMLPurifier module
@@ -514,7 +514,11 @@ class InputfieldCKEditor extends InputfieldTextarea {
 		//$out = parent::___render() . "<script>CKEDITOR.replace('$this->id', config.$this->configName);</script>";
 		$this->addClass('InputfieldCKEditorNormal');
 		$this->attr('data-configName', $this->configName); 
-		$out = parent::___render() . "<script>config.InputfieldCKEditor.editors.$this->id = '$this->configName';</script>";
+		$out = parent::___render() . 
+			"<script>" . 
+			"ProcessWire.config.InputfieldCKEditor.editors.$this->id = '$this->configName';" .
+			"config.InputfieldCKEditor.editors.$this->id = '$this->configName';" . 
+			"</script>";
 		return $out; 
 	}
 
@@ -565,7 +569,7 @@ class InputfieldCKEditor extends InputfieldTextarea {
 			$configData = $this->wire('modules')->getModuleConfigData('ProcessPageEditLink');
 			$targets = isset($configData['targetOptions']) ? $configData['targetOptions'] : '_blank';
 			$targets = explode("\n", $targets);
-			foreach($targets as $k => $v) $targets[$k] = trim($v);
+			foreach($targets as $k => $v) $targets[$k] = trim(trim($v), '+');
 			self::$purifier->set('Attr.AllowedFrameTargets', $targets); // allow links opened in new window/tab
 			self::$purifier->set('Attr.EnableID', $enableID); // for anchor plugin use of id and name attributes
 			$value = self::$purifier->purify($value); 

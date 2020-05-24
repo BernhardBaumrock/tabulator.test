@@ -79,10 +79,10 @@
  * @method WireFileTools files() Access the $files API variable as a function.  #pw-group-api-helpers
  * @method WireCache|string|array|PageArray|null cache($name = '', $expire = null, $func = null) Access the $cache API variable as a function.  #pw-group-api-helpers
  * @method Languages|Language|NullPage|null languages($name = '') Access the $languages API variable as a function.  #pw-group-api-helpers
- * @method WireInput|WireInputData|array|string|int|null input($type = '', $key = '', $sanitizer = '') Access the $input API variable as a function.  #pw-group-api-helpers
+ * @method WireInput|WireInputData|WireInputDataCookie|array|string|int|null input($type = '', $key = '', $sanitizer = '') Access the $input API variable as a function.  #pw-group-api-helpers
  * @method WireInputData|string|int|array|null inputGet($key = '', $sanitizer = '') Access the $input->get() API variable as a function.  #pw-group-api-helpers
  * @method WireInputData|string|int|array|null inputPost($key = '', $sanitizer = '') Access the $input->post() API variable as a function.  #pw-group-api-helpers
- * @method WireInputData|string|int|array|null inputCookie($key = '', $sanitizer = '') Access the $input->cookie() API variable as a function.  #pw-group-api-helpers
+ * @method WireInputDataCookie|string|int|array|null inputCookie($key = '', $sanitizer = '') Access the $input->cookie() API variable as a function.  #pw-group-api-helpers
  * 
  */
 
@@ -437,7 +437,15 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 *
 	 */ 
 	public function __call($method, $arguments) {
-		$hooks = $this->wire('hooks');
+		if(empty($arguments) && Fuel::isCommon($method)) { 
+			// faster version of _callWireAPI for when conditions allow
+			if($this->_wire && !method_exists($this, "___$method")) {
+				// get a common API var with no arguments as method call more quickly 
+				$val = $this->_wire->fuel($method);
+				if($val !== null) return $val;
+			}
+		}
+		$hooks = $this->wire('hooks'); /** @var WireHooks $hooks */
 		if($hooks) {
 			$result = $hooks->runHooks($this, $method, $arguments);
 			if(!$result['methodExists'] && !$result['numHooksRun']) {
@@ -465,15 +473,17 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 		if(!$var) return false;
 		// requested method maps to an API variable
 		$result = array('return' => null);
-		$funcName = 'wire' . ucfirst($method);
-		if(__NAMESPACE__) $funcName = __NAMESPACE__ . "\\$funcName";
-		if(count($arguments) && function_exists($funcName)) {
-			// a function exists with this API var name
-			$wire = ProcessWire::getCurrentInstance();
-			// ensure function call maps to this PW instance
-			if($wire !== $this->_wire) ProcessWire::setCurrentInstance($this->_wire);
-			$result['return'] = call_user_func_array($funcName, $arguments);
-			if($wire !== $this->_wire) ProcessWire::setCurrentInstance($wire);
+		if(count($arguments)) {
+			$funcName = 'wire' . ucfirst($method);
+			if(__NAMESPACE__) $funcName = __NAMESPACE__ . "\\$funcName";
+			if(function_exists($funcName)) {
+				// a function exists with this API var name
+				$wire = ProcessWire::getCurrentInstance();
+				// ensure function call maps to this PW instance
+				if($wire !== $this->_wire) ProcessWire::setCurrentInstance($this->_wire);
+				$result['return'] = call_user_func_array($funcName, $arguments);
+				if($wire !== $this->_wire) ProcessWire::setCurrentInstance($wire);
+			}
 		} else {
 			// if no arguments provided, just return API var
 			$result['return'] = $var;
@@ -1186,8 +1196,8 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	/**
 	 * Record a Notice, internal use (contains the code for message, warning and error methods)
 	 * 
-	 * @param string $text|array|Wire Title of notice
-	 * @param int $flags Flags bitmask
+	 * @param string|array|Wire $text Title of notice
+	 * @param int|string $flags Flags bitmask or space separated string of flag names
 	 * @param string $name Name of container
 	 * @param string $class Name of Notice class
 	 * @return $this
@@ -1220,12 +1230,13 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * #pw-group-notices
 	 *
 	 * @param string|array|Wire $text Text to include in the notice
-	 * @param int|bool $flags Optional flags to alter default behavior: 
+	 * @param int|bool|string $flags Optional flags to alter default behavior: 
 	 *  - `Notice::debug` (constant): Indicates notice should only be shown when debug mode is active.
 	 *  - `Notice::log` (constant): Indicates notice should also be logged.
 	 *  - `Notice::logOnly` (constant): Indicates notice should only be logged.
 	 *  - `Notice::allowMarkup` (constant): Indicates notice should allow the use of HTML markup tags.
 	 *  - `true` (boolean): Shortcut for the `Notice::log` constant.
+	 *  - In 3.0.149+ you may also specify a space-separated string of flag names.
 	 * @return $this
 	 * @see Wire::messages(), Wire::warning(), Wire::error()
 	 *
@@ -1250,12 +1261,13 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * #pw-group-notices
 	 *
 	 * @param string|array|Wire $text Text to include in the notice
-	 * @param int|bool $flags Optional flags to alter default behavior:
+	 * @param int|bool|string $flags Optional flags to alter default behavior:
 	 *  - `Notice::debug` (constant): Indicates notice should only be shown when debug mode is active.
 	 *  - `Notice::log` (constant): Indicates notice should also be logged.
 	 *  - `Notice::logOnly` (constant): Indicates notice should only be logged.
 	 *  - `Notice::allowMarkup` (constant): Indicates notice should allow the use of HTML markup tags.
 	 *  - `true` (boolean): Shortcut for the `Notice::log` constant.
+	 *  - In 3.0.149+ you may also specify a space-separated string of flag names.
 	 * @return $this
 	 * @see Wire::warnings(), Wire::message(), Wire::error()
 	 *
@@ -1282,12 +1294,13 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * #pw-group-notices
 	 *
 	 * @param string|array|Wire $text Text to include in the notice
-	 * @param int|bool $flags Optional flags to alter default behavior:
+	 * @param int|bool|string $flags Optional flags to alter default behavior:
 	 *  - `Notice::debug` (constant): Indicates notice should only be shown when debug mode is active.
 	 *  - `Notice::log` (constant): Indicates notice should also be logged.
 	 *  - `Notice::logOnly` (constant): Indicates notice should only be logged.
 	 *  - `Notice::allowMarkup` (constant): Indicates notice should allow the use of HTML markup tags.
 	 *  - `true` (boolean): Shortcut for the `Notice::log` constant.
+	 *  - In 3.0.149+ you may also specify a space-separated string of flag names.
 	 * @return $this
 	 * @see Wire::errors(), Wire::message(), Wire::warning()
 	 *
@@ -1432,7 +1445,7 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * @param string|array $options One or more of array elements or space separated string of:
 	 * 	- `first` - only first item will be returned
 	 * 	- `last` - only last item will be returned
-	 * 	- `all` - include all errors, including those beyond the scope of this object
+	 * 	- `all` - include all messages, including those beyond the scope of this object
 	 * 	- `clear` - clear out all items that are returned from this method
 	 * 	- `array` - return an array of strings rather than series of Notice objects.
 	 * 	- `string` - return a newline separated string rather than array/Notice objects.
@@ -1524,7 +1537,7 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * 
 	 * #pw-group-translation
 	 *
-	 * @param string $text Text string to translate
+	 * @param string|array $text Text string to translate (or array in 3.0.151 also supported)
 	 * @return string
 	 *
 	 */
@@ -1539,7 +1552,7 @@ abstract class Wire implements WireTranslatable, WireFuelable, WireTrackable {
 	 * 
 	 * #pw-group-translation
 	 * 
-	 * @param string $text Text for translation. 
+	 * @param string|array $text Text for translation. 
 	 * @param string $context Name of context
 	 * @return string Translated text or original text if translation not available.
 	 *

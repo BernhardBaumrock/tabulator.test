@@ -323,6 +323,7 @@ class WireTextTools extends Wire {
 	 *  - `stripTags` (bool): Strip markup tags? (default=true)
 	 *  - `keepTags` (array): Array of tag names to keep, if stripTags==true. (default=[])
 	 *  - `collapseLinesWith` (string): String to collapse newlines with. (default=' ')
+	 *  - `linksToUrls` (bool): Convert links to "(url)" rather than removing entirely? (default=false) Since 3.0.132
 	 *  - `endBlocksWith` (string): Character or string to insert to identify paragraph/header separation (default='')
 	 *  - `convertEntities` (bool): Convert entity-encoded characters to text? (default=true)
 	 * @return mixed|string
@@ -336,13 +337,17 @@ class WireTextTools extends Wire {
 			'collapseLinesWith' => ' ',
 			'endBlocksWith' => '',
 			'convertEntities' => true,
+			'linksToUrls' => false,
 		);
 
 		$options = array_merge($defaults, $options);
 
 		if($options['stripTags']) {
 			$str = $this->markupToText($str, array(
+				'underlineHeadlines' => false,
+				'uppercaseHeadlines' => false,
 				'convertEntities' => $options['convertEntities'],
+				'linksToUrls' => $options['linksToUrls'],
 				'keepTags' => $options['keepTags'],
 			));
 			if(!strlen($str)) return $str;
@@ -497,6 +502,7 @@ class WireTextTools extends Wire {
 		$tests = array();
 		$punctuationChars = $this->getPunctuationChars();
 		$endSentenceChars = $this->getPunctuationChars(true);
+		$endSentenceChars[] = ':';
 
 		if($options['keepFormatTags']) {
 			$options['keepTags'] = array_merge($options['keepTags'], array(
@@ -570,46 +576,54 @@ class WireTextTools extends Wire {
 			if($pos) $tests[] = $pos;
 		}
 
-		// if we didn't find any place to truncate, just return exact truncated string
-		if(!count($tests)) {
-			return trim($str, $options['trim']) . $options['more'];
-		}
-
-		// we found somewhere to truncate, so truncate at the longest one possible
-		if($options['maximize']) {
-			sort($tests);
-		} else {
-			rsort($tests);
-		}
-
-		// process our tests
-		do {
-			$pos = array_pop($tests);
-			$result = trim($this->substr($str, 0, $pos + 1));
-			$lastChar = $this->substr($result, -1);
-			$result = rtrim($result, $options['trim']);
-
-			if($type === 'sentence' || $type === 'block') {
-				// good to go with result as is
-			} else if(in_array($lastChar, $endSentenceChars)) {
-				// good, end with sentence ending punctuation
-			} else if(in_array($lastChar, $punctuationChars)) {
-				$trims = ' ';
-				foreach($punctuationChars as $c) {
-					if($this->strpos($options['noTrim'], $c) !== false) continue;
-					if(in_array($c, $endSentenceChars)) continue;
-					$trims .= $c;
-				}
-				$result = rtrim($result, $trims) . $options['more'];
+		if(count($tests)) {
+			// we found somewhere to truncate, so truncate at the longest one possible
+			if($options['maximize']) {
+				sort($tests);
 			} else {
-				$result .= $options['more'];
+				rsort($tests);
 			}
 
-		} while(!strlen($result) && count($tests));
+			// process our tests
+			do {
+				$pos = array_pop($tests);
+				$result = trim($this->substr($str, 0, $pos + 1));
+				$lastChar = $this->substr($result, -1);
+				$result = rtrim($result, $options['trim']);
 
-		// make sure we didn't break any HTML tags as a result of truncation
-		if(strlen($result) && count($options['keepTags']) && strpos($result, '<') !== false) {
-			$result = $this->fixUnclosedTags($result);
+				if($type === 'sentence' || $type === 'block') {
+					// good to go with result as is
+				} else if(in_array($lastChar, $endSentenceChars)) {
+					// good, end with sentence ending punctuation
+				} else if(in_array($lastChar, $punctuationChars)) {
+					$trims = ' ';
+					foreach($punctuationChars as $c) {
+						if($this->strpos($options['noTrim'], $c) !== false) continue;
+						if(in_array($c, $endSentenceChars)) continue;
+						$trims .= $c;
+					}
+					$result = rtrim($result, $trims) . $options['more'];
+				} else {
+					$result .= $options['more'];
+				}
+
+			} while(!strlen($result) && count($tests));
+
+			// make sure we didn't break any HTML tags as a result of truncation
+			if(strlen($result) && count($options['keepTags']) && strpos($result, '<') !== false) {
+				$result = $this->fixUnclosedTags($result);
+			}
+		} else {
+			// if we didn't find any place to truncate, just return exact truncated string
+			$result = trim($str, $options['trim']) . $options['more'];
+		}
+		
+		if(strlen($options['more'])) {
+			// remove any duplicated more strings
+			$more = $options['more'];
+			while(strpos($result, "$more$more") !== false) {
+				$result = str_replace("$more$more", "$more", $result); 
+			}
 		}
 		
 		return $result;
@@ -854,6 +868,119 @@ class WireTextTools extends Wire {
 		return $str; 
 	}
 
+	/**
+	 * Given two arrays, return array of the changes with 'ins' and 'del' keys
+	 * 
+	 * Based upon Paul Butler’s Simple Diff Algorithm v0.1 © 2007 (zlib/libpng) https://paulbutler.org
+	 * 
+	 * @param array $oldArray
+	 * @param array $newArray
+	 * @return array
+	 * @since 3.0.144
+	 * 
+	 */
+	protected function diffArray(array $oldArray, array $newArray) {
+		
+		$matrix = array();
+		$maxLen = 0;
+		$oldMax = 0; 
+		$newMax = 0;
+		
+		foreach($oldArray as $oldKey => $oldValue){
+			
+			$newKeys = array_keys($newArray, $oldValue);
+			
+			foreach($newKeys as $newKey) {
+				$len = 1;
+				if(isset($matrix[$oldKey - 1][$newKey - 1])) {
+					$len = $matrix[$oldKey - 1][$newKey - 1] + 1;
+				}
+				$matrix[$oldKey][$newKey] = $len;
+
+				if($len > $maxLen) {
+					$maxLen = $len;
+					$oldMax = $oldKey + 1 - $maxLen;
+					$newMax = $newKey + 1 - $maxLen;
+				}
+			}
+		}
+		
+		if($maxLen == 0) {
+			$result = array(
+				array('del' => $oldArray, 'ins' => $newArray)
+			);
+			
+		} else {
+			$result = array_merge(
+				$this->diffArray(
+					array_slice($oldArray, 0, $oldMax), 
+					array_slice($newArray, 0, $newMax)
+				),
+				array_slice($newArray, $newMax, $maxLen),
+				$this->diffArray(
+					array_slice($oldArray, $oldMax + $maxLen), 
+					array_slice($newArray, $newMax + $maxLen)
+				)
+			);
+		}
+		
+		return $result;
+	}
+
+	/**
+	 * Given two strings ($old and $new) return a diff string in HTML markup
+	 * 
+	 * @param string $old Old string value
+	 * @param string $new New string value
+	 * @param array $options Options to modify behavior:
+	 *  - `ins` (string) Markup to use for diff insertions (default: `<ins>{out}</ins>`)
+	 *  - `del` (string) Markup to use for diff deletions (default: `<del>{out}</del>`)
+	 *  - `entityEncode` (bool): Entity encode values, other than added ins/del tags? (default=true)
+	 *  - `split` (string): Regex used to split strings for parts to diff (default=`\s+`)
+	 * @return string
+	 * @since 3.0.144
+	 * 
+	 */
+	public function diffMarkup($old, $new, array $options = array()) {
+		
+		$defaults = array(
+			'ins' => "<ins>{out}</ins>",
+			'del' => "<del>{out}</del>", 
+			'entityEncode' => true,
+			'split' => '\s+', 
+		);
+		
+		/** @var Sanitizer $sanitizer */
+		$sanitizer = $this->wire('sanitizer');
+		list($old, $new) = array("$old", "$new"); // enforce as string
+		$options = array_merge($defaults, $options);
+		$oldArray = preg_split("!($options[split])!", $old, 0, PREG_SPLIT_DELIM_CAPTURE);
+		$newArray = preg_split("!($options[split])!", $new, 0, PREG_SPLIT_DELIM_CAPTURE);
+		$diffArray = $this->diffArray($oldArray, $newArray);
+		list(,$delClose) = explode('{out}', $options['del'], 2);
+		list($insOpen,) = explode('{out}', $options['ins'], 2); 
+		$out = '';
+		
+		foreach($diffArray as $diff) {
+			if(is_array($diff)) {
+				foreach(array('del', 'ins') as $key) {
+					if(empty($diff[$key])) continue;
+					$diffStr = implode('', $diff[$key]);
+					if($options['entityEncode']) $diffStr = $sanitizer->entities1($diffStr);
+					$out .= str_replace('{out}', $diffStr, $options[$key]);
+				}
+			} else {
+				$out .= ($options['entityEncode'] ? $sanitizer->entities1($diff) : $diff);
+			}
+		}
+
+		if(strpos($out, "$delClose$insOpen")) {
+			// put a space between '</del><ins>' so that it is '</del> <ins>'
+			$out = str_replace("$delClose$insOpen", "$delClose $insOpen", $out);
+		}
+		
+		return $out;
+	}
 	
 	/***********************************************************************************************************
 	 * MULTIBYTE PHP STRING FUNCTIONS THAT FALLBACK WHEN MBSTRING NOT AVAILABLE

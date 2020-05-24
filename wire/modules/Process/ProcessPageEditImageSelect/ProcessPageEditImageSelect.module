@@ -1159,6 +1159,8 @@ class ProcessPageEditImageSelect extends Process implements ConfigurableModule {
 			// replace original image
 			
 			if($this->original && $this->original != $image2->basename() && $original = $image->pagefiles->get($this->original)) {
+				/** @var Pageimage $original */	
+				
 				$fileID = 'file_' . $original->hash; 
 				
 				if($rebuildVariations && $this->field->get('adminThumbs')) {
@@ -1174,12 +1176,24 @@ class ProcessPageEditImageSelect extends Process implements ConfigurableModule {
 						}
 					}
 				}
+
 				
 				// replace original image
-				$target = $path . $this->original;
-				$this->wire('files')->unlink($target); 
-				$this->wire('files')->rename($image2->filename(), $target);
-				
+				if($original->replaceFile($image2->filename())) {
+					$original->modified = time();
+					$original->modifiedUser = $this->wire('user');
+					/** @var FieldtypeFile $fieldtype */
+					$fieldtype = $this->field->type;
+					$fieldtype->saveFileCols($this->page, $this->field, $original, array(
+						'filesize' => $original->filesize(),
+						'modified' => $original->modified,
+						'modified_users_id' => $original->modified_users_id,
+						'width' => $original->width(),
+						'height' => $original->height(),
+						'ratio' => $original->ratio(),
+					));
+				}
+			
 				$this->wire('pages')->uncacheAll();	
 				$page = $this->wire('pages')->get($this->page->id); 
 				/** @var Pageimages $value */
@@ -1546,7 +1560,7 @@ class ProcessPageEditImageSelect extends Process implements ConfigurableModule {
 				(strlen($row['num']) ? $row['num'] : '&nbsp;'),
 				"<a class='preview' href='$row[url]'><img src='$row[url]' alt='$row[name]' style='max-width: 100px;' /></a>",
 				"<a class='preview' href='$row[url]'>$row[name]</a><br /><span class='detail'>$row[width]x$row[height]</span>",
-				"<span style='display: none;'>$row[filesize]</span>$row[filesizeStr]",
+				"<span style='display: none;'>$row[filesize] </span>$row[filesizeStr]",
 				$row['modified'],
 				implode('<br />', $row['notes']),
 				//($hasEditPermission ? "<label><input type='checkbox' class='delete' name='delete[]' value='$row[name]' /> &nbsp;</label>" : "&nbsp;")

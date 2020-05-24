@@ -95,7 +95,7 @@ class Selectors extends WireArray {
 		'[' => ']',
 		'{' => '}',
 		'(' => ')',
-		);
+	);
 	
 	/**
 	 * Given a selector string, extract it into one or more corresponding Selector objects, iterable in this object.
@@ -205,6 +205,79 @@ class Selectors extends WireArray {
 	}
 
 	/**
+	 * Get all operators allowed by selectors
+	 * 
+	 * #pw-group-static-helpers
+	 * 
+	 * @param array $options
+	 *  - `operator` (string): Return info for only this operator. When specified, only value is returned (default='').
+	 *  - `compareType` (int): Return only operators matching given `Selector::compareType*` constant (default=0).
+	 *  - `getIndexType` (string): Index type to use in returned array: 'operator' or 'class' (default='class')
+	 *  - `getValueType` (string): Value type to use in returned array: 'operator', 'class', 'compareType', 'verbose' (default='operator').
+	 *     If 'verbose' option used then assoc array returned for each operator containing 'class', 'operator', 'compareType'.
+	 * @return array|string|int Returned array where both keys and values are operators (or values are requested 'valueType' option)
+	 *   If 'operator' option specified, return value is string, int or array (requested 'valueType'), and there is no indexType.
+	 * @since 3.0.154
+	 *
+	 */
+	static public function getOperators(array $options = array()) {
+		
+		$defaults = array(
+			'operator' => '',
+			'getIndexType' => 'class',
+			'getValueType' => 'operator',
+			'compareType' => 0,
+		);
+		
+		$options = array_merge($defaults, $options);
+		$operators = array();
+		$compareType = (int) $options['compareType'];
+		$indexType = $options['getIndexType'];
+		$valueType = $options['getValueType'];
+		$selectorTypes = self::$selectorTypes;
+		
+		if(!empty($options['operator'])) {
+			$selectorTypes = array($options['operator'] => $selectorTypes[$options['operator']]);
+		}
+		
+		foreach($selectorTypes as $operator => $typeName) {
+			$className = __NAMESPACE__ . "\\$typeName";
+			if($compareType) {
+				/** @var Selector $className */
+				if(!($className::getCompareType() & $options['compareType'])) continue;
+			}
+			if($valueType === 'class') {
+				$value = $typeName;
+			} else if($valueType === 'className') {
+				$value = $className;
+			} else if($valueType === 'compareType') {
+				$value = $className::getCompareType();
+			} else if($valueType === 'verbose') {
+				$value = array(
+					'operator' => $operator,
+					'class' => $typeName,
+					'className' => $className,
+					'compareType' => $className::getCompareType(),
+				);
+			} else {
+				$value = $operator;
+			}
+			if($indexType === 'class') {
+				$key = $typeName; 
+			} else if($indexType === 'className') {
+				$key = $className;
+			} else {
+				$key = $operator;
+			}
+			$operators[$key] = $value;
+		}
+		
+		if(!empty($options['operator'])) return reset($operators); 
+		
+		return $operators;
+	}
+
+	/**
 	 * Return array of all valid operator characters
 	 * 
 	 * #pw-group-static-helpers
@@ -214,6 +287,31 @@ class Selectors extends WireArray {
 	 */
 	static public function getOperatorChars() {
 		return self::$operatorChars; 
+	}
+
+	/**
+	 * Return array of other characters that have meaning in a selector outside of operators
+	 * 
+	 * #pw-group-static-helpers
+	 * 
+	 * @return array
+	 * @since 3.0.156
+	 * 
+	 */
+	static public function getReservedChars() {
+		return array(
+			'or' => '|', // title|body=foo, summary=bar|baz
+			'not' => '!', // !body*=suchi tobiko
+			'separator' => ',', // foo=bar, bar=baz
+			'match-same-1' => '@', // @foo.bar=123, @foo.baz=456
+			'quote-value' => '"', // foo="bar"
+			'or-group-open' => '(', // id>0, (title=foo), (body=bar)
+			'or-group-close' => ')', 
+			'sub-selector-open' => '[', // foo=[bar>0, baz%=text]
+			'sub-selector-close' => ']', 
+			'api-var-open' => '[', // [page], [page.id], [user.id], etc. 
+			'api-var-close' => ']', 
+		);
 	}
 
 	/**

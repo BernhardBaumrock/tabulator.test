@@ -390,7 +390,7 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 
 		if(!$id) {
 			$this->session->redirect('./bookmarks/');
-			throw new Wire404Exception($this->noticeUnknown); // Init error: no page provided
+			throw new Wire404Exception($this->noticeUnknown, Wire404Exception::codeSecondary); // Init error: no page provided
 		}
 
 		$this->page = $this->loadPage($id); 
@@ -2048,18 +2048,21 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 							$message .= ' - ' . $this->_('Cannot be published until errors are corrected');
 						}
 					}
-					
+				
+					$restored = false;
 					if($this->input->post('restore_page') && $this->page->isTrash() && $this->page->restorable()) {
 						if($formErrors) {
 							$this->warning($this->_('Page cannot be restored while errors are present'));
 						} else if($this->wire('pages')->restore($this->page, false)) {
 							$message = sprintf($this->_('Restored Page: %s'), '{path}') . $numChanges; 
+							$restored = true;
 						} else {
 							$this->warning($this->_('Error restoring page'));
 						}
 					}
 
 					$this->wire('pages')->save($this->page, $options);
+					if($restored) $this->wire('pages')->restored($this->page);
 					$message = str_replace('{path}', $this->page->path, $message);
 					$this->message($message);
 
@@ -2068,7 +2071,14 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 					}
 
 				} catch(\Exception $e) {
-					$this->error($e->getMessage());
+					$show = true;
+					$message = $e->getMessage();
+					foreach($this->errors('all') as $error) {
+						if(strpos($error, $message) === false) continue;
+						$show = false;
+						break;
+					}
+					if($show) $this->error($message);
 				}
 			}
 		}
@@ -2984,10 +2994,16 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 	public function setupHeadline() {
 
 		$titlePage = null;
+		$page = $this->page;
 		
-		if($this->page && $this->page->id) {
-			$page = $this->page;
+		if($page && $page->id) {
 			$title = $page->get('title');
+			if(is_object($title) && !strlen("$title") && wireInstanceOf($title, 'LanguagesPageFieldValue')) {
+				/** @var LanguagesPageFieldValue $title */
+				$title = $title->getNonEmptyValue($page->name);
+			} else {
+				$title = (string) $title;
+			}
 			if(empty($title)) {
 				if($this->wire('pages')->names()->isUntitledPageName($page->name)) {
 					$title = $page->template->getLabel();
@@ -2995,6 +3011,7 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 					$title = $page->get('name');
 				}
 			}
+			if(empty($title)) $title = $page->name;
 		} else if($this->parent && $this->parent->id) {
 			$titlePage = $this->parent;
 			$title = rtrim($this->parent->path, '/') . '/[...]';
@@ -3004,6 +3021,7 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 		}
 
 		$browserTitle = sprintf($this->_('Edit Page: %s'), $title);
+		$headline = '';
 
 		if($this->field) {
 			if(count($this->fields) == 1) {
@@ -3019,10 +3037,9 @@ class ProcessPageEdit extends Process implements WirePageEditor, ConfigurableMod
 			
 		} else if($titlePage) {
 			$headline = $titlePage->get('title|name');
-			
-		} else {
-			$headline = $title;
 		}
+	
+		if(empty($headline)) $headline = $title;
 
 		$this->headline($headline);
 		$this->browserTitle($browserTitle);

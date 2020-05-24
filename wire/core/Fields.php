@@ -114,6 +114,12 @@ class Fields extends WireSaveableItems {
 	protected $tagList = null;
 
 	/**
+	 * @var FieldsTableTools|null
+	 * 
+	 */
+	protected $tableTools = null;
+
+	/**
 	 * Construct
 	 *
 	 */
@@ -153,6 +159,46 @@ class Fields extends WireSaveableItems {
 	 */
 	public function makeBlankItem() {
 		return $this->wire(new Field());
+	}
+
+	/**
+	 * Make an item and populate with given data
+	 *
+	 * @param array $a Associative array of data to populate
+	 * @return Saveable|Wire
+	 * @throws WireException
+	 * @since 3.0.146
+	 *
+	 */
+	public function makeItem(array $a = array()) {
+		
+		if(empty($a['type'])) return parent::makeItem($a);
+		
+		/** @var Fieldtypes $fieldtypes */
+		$fieldtypes = $this->wire('fieldtypes');
+		if(!$fieldtypes) return parent::makeItem($a);
+		
+		/** @var Fieldtype $fieldtype */
+		$fieldtype = $fieldtypes->get($a['type']);
+		if(!$fieldtype) return parent::makeItem($a);
+		
+		$class = $fieldtype->getFieldClass($a);
+		if(empty($class) || $class === 'Field') return parent::makeItem($a);
+		
+		if(strpos($class, "\\") === false) $class = wireClassName($class, true);
+		if(!class_exists($class)) return parent::makeItem($a);
+	
+		/** @var Field $field */
+		$field = new $class();
+		$this->wire($field);
+		
+		foreach($a as $key => $value) {
+			$field->$key = $value;
+		}
+		
+		$field->resetTrackChanges(true);
+		
+		return $field;
 	}
 
 	/**
@@ -1072,6 +1118,20 @@ class Fields extends WireSaveableItems {
 			$fieldtypes = $this->wire('fieldtypes');
 		}
 		return $fieldtypes;
+	}
+
+	/**
+	 * Get FieldsIndexTools instance
+	 * 
+	 * #pw-internal
+	 * 
+	 * @return FieldsTableTools
+	 * @since 3.0.150
+	 * 
+	 */
+	public function tableTools() {
+		if($this->tableTools === null) $this->tableTools = $this->wire(new FieldsTableTools());
+		return $this->tableTools;
 	}
 
 }
