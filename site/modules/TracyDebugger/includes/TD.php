@@ -31,6 +31,10 @@ class TD extends TracyDebugger {
         static::log($var);
     }
 
+    public static function barEcho($str) {
+        static::dumpToBar($str, null, null, true);
+    }
+
     /**
      * Tracy\Debugger::barDump() shortcut.
      * @tracySkipLocation
@@ -133,10 +137,10 @@ class TD extends TracyDebugger {
      * Send content to dump bar
      * @tracySkipLocation
      */
-    private static function dumpToBar($var, $title = NULL, array $options = NULL) {
+    private static function dumpToBar($var, $title = NULL, array $options = NULL, $echo = false) {
         $dumpItem = array();
         $dumpItem['title'] = $title;
-        $dumpItem['dump'] = static::generateDump($var, $options);
+        $dumpItem['dump'] = $echo ? $var : static::generateDump($var, $options);
         array_push(\TracyDebugger::$dumpItems, $dumpItem);
 
         if(isset(\TracyDebugger::$showPanels) && in_array('dumpsRecorder', \TracyDebugger::$showPanels)) {
