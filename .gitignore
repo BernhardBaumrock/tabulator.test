@@ -2,6 +2,7 @@
 /site/assets/cache
 /site/assets/sessions
 /site/assets/logs
+/site/assets/backups/database/*
 
 ## ignore updated module backups
 /site/modules/.*
