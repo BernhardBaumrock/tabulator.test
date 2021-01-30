@@ -99,6 +99,7 @@
  * @property Page|null $_cloning Internal runtime use, contains Page being cloned (source), when this Page is the new copy (target). #pw-internal
  * @property bool|null $_hasAutogenName Internal runtime use, set by Pages class when page as auto-generated name. #pw-internal
  * @property bool|null $_forceSaveParents Internal runtime/debugging use, force a page to refresh its pages_parents DB entries on save(). #pw-internal
+ * @property float|null $_pfscore Internal PageFinder fulltext match score when page found/loaded from relevant query. #pw-internal
  * 
  * Methods added by PageRender.module: 
  * -----------------------------------
@@ -1069,8 +1070,10 @@ class Page extends WireData implements \Countable, WireMatchable {
 			// check if the field is corrupted
 			$isCorrupted = false;
 			if(is_object($value) && $value instanceof PageFieldValueInterface) {
+				// value indicates it is already formatted, so would corrupt the page for saving
 				if($value->formatted()) $isCorrupted = true;
 			} else if($this->outputFormatting) {
+				// check if value is modified by being formatted
 				$result = $field->type->_callHookMethod('formatValue', array($this, $field, $value));
 				if($result != $value) $isCorrupted = true; 
 			}
@@ -1538,7 +1541,7 @@ class Page extends WireData implements \Countable, WireMatchable {
 		// prevent storage of value if it was filtered when loaded
 		if(!empty($selector)) $this->__unset($key);
 		
-		if(is_object($value) && $value instanceof Wire) $value->resetTrackChanges(true);
+		if(is_object($value) && $value instanceof Wire && !$value instanceof Page) $value->resetTrackChanges(true);
 		if($track) $this->setTrackChanges(true); 
 	
 		$value = $this->formatFieldValue($field, $value);
@@ -1752,7 +1755,8 @@ class Page extends WireData implements \Countable, WireMatchable {
 	/**
 	 * Same as getMarkup() except returned value is plain text
 	 * 
-	 * Returned value is entity encoded, unless $entities argument is false. 
+	 * If no `$entities` argument is provided, returned value is entity encoded when output formatting 
+	 * is on, and not entity encoded when output formatting is off.
 	 * 
 	 * #pw-advanced
 	 * 
@@ -1768,12 +1772,12 @@ class Page extends WireData implements \Countable, WireMatchable {
 		$length = strlen($value);
 		if(!$length) return '';
 		$options = array(
-			'entities' => (is_null($entities) ? $this->outputFormatting() : (bool) $entities)
+			'entities' => ($entities === null ? $this->outputFormatting() : (bool) $entities)
 		);
 		if($oneLine) {
-			$value = $this->wire('sanitizer')->markupToLine($value, $options);
+			$value = $this->wire()->sanitizer->markupToLine($value, $options);
 		} else {
-			$value = $this->wire('sanitizer')->markupToText($value, $options);
+			$value = $this->wire()->sanitizer->markupToText($value, $options);
 		}
 		// if stripping tags from non-empty value made it empty, just indicate that it was markup and length
 		if(!strlen(trim($value))) $value = "markup($length)";
@@ -1781,9 +1785,49 @@ class Page extends WireData implements \Countable, WireMatchable {
 	}
 
 	/**
-	 * Get the unformatted value of a field, regardless of output formatting state
+	 * Set the unformatted value of a field, regardless of current output formatting state
 	 * 
-	 * When a page's output formatting state is off, `$page->get('property')` or `$page->property` will
+	 * Use this when setting an unformatted value to a page that has (or might have) output formatting enabled. 
+	 * This will save you the steps of checking the output formatting state, turning it off, setting the value,
+	 * and turning it back on again (if it was on). Note that the output formatting distinction matters for some
+	 * field types and not others, just depending on the case—this method is safe to use either way.
+	 * 
+	 * Make sure you do not use this to set an already formatted value to a Page (like some text that has been 
+	 * entity encoded). This method skips over some of the checks that might otherwise flag the page as corrupted. 
+	 * 
+	 * ~~~~~
+	 * // good usage
+	 * $page->setUnformatted('title', 'This & That'); 
+	 * 
+	 * // bad usage
+	 * $page->setUnformatted('title', 'This &amp; That'); 
+	 * ~~~~~
+	 * 
+	 * #pw-advanced
+	 * 
+	 * @param string $key
+	 * @param mixed $value
+	 * @return self
+	 * @since 3.0.169
+	 * @throws WireException if given an object value that indicates it is already formatted. 
+	 * @see Page::getUnformatted(), Page::of(), Page::setOutputFormatting(), Page::outputFormatting()
+	 * 
+	 */
+	public function setUnformatted($key, $value) {
+		if(is_object($value) && $value instanceof PageFieldValueInterface && $value->formatted()) {
+			throw new WireException("Cannot use formatted-value with Page::setUnformatted($key, formatted-value);");
+		}
+		$outputFormatting = $this->outputFormatting;
+		if($outputFormatting) $this->setOutputFormatting(false);
+		$this->set($key, $value);
+		if($outputFormatting) $this->setOutputFormatting(true);
+		return $this;
+	}
+
+	/**
+	 * Get the unformatted value of a field, regardless of current output formatting state
+	 * 
+	 * When a page’s output formatting state is off, `$page->get('property')` or `$page->property` will
 	 * produce the same result as this method call. 
 	 * 
 	 * ~~~~~
@@ -1795,7 +1839,7 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 * 
 	 * @param string $key Field or property name to retrieve
 	 * @return mixed
-	 * @see Page::getFormatted(), Page::of()
+	 * @see Page::getFormatted(), Page::of(), Page::setOutputFormatting(), Page::outputFormatting()
 	 *
 	 */
 	public function getUnformatted($key) {
@@ -3075,9 +3119,11 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 *
 	 */
 	public function resetTrackChanges($trackChanges = true) {
-		parent::resetTrackChanges($trackChanges); 
+		parent::resetTrackChanges($trackChanges);
 		foreach($this->data as $key => $value) {
-			if(is_object($value) && $value instanceof Wire && $value !== $this) $value->resetTrackChanges($trackChanges); 
+			if(is_object($value) && $value instanceof Wire && !$value instanceof Page) {
+				$value->resetTrackChanges($trackChanges);
+			}
 		}
 		return $this; 
 	}
@@ -3239,7 +3285,7 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 */
 	public function url($options = null) {
 		if($options !== null) return $this->traversal()->urlOptions($this, $options);
-		$url = rtrim($this->wire('config')->urls->root, "/") . $this->path();
+		$url = rtrim($this->wire('config')->urls->root, '/') . $this->path();
 		if($this->template->slashUrls === 0 && $this->settings['id'] > 1) $url = rtrim($url, '/'); 
 		return $url;
 	}
@@ -3818,7 +3864,10 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 *
 	 */
 	public function isLoaded($fieldName = null) {
-		if($fieldName) return parent::get($fieldName) !== null;
+		if($fieldName) {
+			if($this->hasField($fieldName)) return isset($this->data[$fieldName]); 
+			return parent::get($fieldName) !== null;
+		}
 		return $this->isLoaded; 
 	}
 
@@ -4101,6 +4150,26 @@ class Page extends WireData implements \Countable, WireMatchable {
 	}
 
 	/**
+	 * Does this Page use secure Pagefiles?
+	 * 
+	 * See also `$template->pagefileSecure` and `$config->pagefileSecure` which determine the return value. 
+	 *
+	 * #pw-group-files
+	 *
+	 * @return bool|null Returns boolean true if yes, false if no, or null if not known
+	 * @since 3.0.166
+	 *
+	 */
+	public function secureFiles() {
+		if($this->wire()->config->pagefileSecure && !$this->isPublic()) return true;
+		if(!$this->template) return null;
+		$value = $this->template->pagefileSecure;
+		if($value < 1) return false; // 0: disabled
+		if($value > 1) return true; // 2: files always secure
+		return !$this->isPublic(); // 1: secure only if page not public
+	}
+
+	/**
 	 * Does the page have a files path for storing files?
 	 * 
 	 * This will only check if files path exists, it will not create the path if it’s not already present.
@@ -4130,6 +4199,31 @@ class Page extends WireData implements \Countable, WireMatchable {
 	 */
 	public function hasFiles() {
 		return PagefilesManager::hasFiles($this); 
+	}
+
+	/**
+	 * Does Page have given filename in its files directory?
+	 *
+	 * @param string $file File basename or verbose hash
+	 * @param array $options
+	 *  - `getPathname` (bool): Get full path + filename when would otherwise return boolean true? (default=false)
+	 *  - `getPagefile` (bool): Get Pagefile object when would otherwise return boolean true? (default=false)
+	 * @return bool|string
+	 * @since 3.0.166
+	 *
+	 */
+	public function hasFile($file, array $options = array()) {
+		$defaults = array(
+			'getPathname' => false,
+			'getPagefile' => false,
+		);
+		$file = basename($file);
+		$options = array_merge($defaults, $options);
+		$hasFile = PagefilesManager::hasFile($this, $file, $options['getPathname']);
+		if($hasFile && $options['getPagefile']) {
+			$hasFile = $this->wire()->fieldtypes->FieldtypeFile->getPagefile($this, $file);
+		}
+		return $hasFile;
 	}
 
 	/**
@@ -4173,7 +4267,6 @@ class Page extends WireData implements \Countable, WireMatchable {
 			foreach($this->template->fieldgroup as $field) {
 				$value = parent::get($field->name);
 				if($value != null && is_object($value)) {
-					if(method_exists($value, 'uncache') && $value !== $this) $value->uncache(); 
 					parent::set($field->name, null); 
 					if(isset($this->wakeupNameQueue[$field->name])) unset($this->wakeupNameQueue[$field->name]); 
 				}

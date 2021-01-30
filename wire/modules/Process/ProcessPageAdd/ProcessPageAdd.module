@@ -19,6 +19,8 @@
  * @method string nameChangedWarning(Page $page, $namePrevious)
  * 
  * @property bool|int $noAutoPublish Disable automatic publishing?
+ * @property-write Template $template
+ * @property-write int $parent_id
  *
  */
 
@@ -493,6 +495,13 @@ class ProcessPageAdd extends Process implements ConfigurableModule, WirePageEdit
 		if(!$this->isAllowedParent($this->parent, true, $this->template)) {
 			throw new WireException($this->errors('string'));
 		}
+
+		if($this->parent->template->name === 'admin' && $this->wire()->page->id != $this->parent->id) {
+			$process = $this->parent->process;
+			if($process && wireInstanceOf($process, 'ProcessPageType')) {
+				$this->wire()->session->location($this->parent->url . 'add/');
+			}
+		} 
 
 		if(count($this->parent->template->childTemplates) == 1) {
 			// only one type of template is allowed for the parent

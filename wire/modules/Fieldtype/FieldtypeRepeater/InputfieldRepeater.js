@@ -3,7 +3,7 @@
  *
  * Maintains a collection of fields that are repeated for any number of times.
  *
- * ProcessWire 3.x, Copyright 2016 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2021 by Ryan Cramer
  * https://processwire.com
  *
  */
@@ -81,12 +81,14 @@ function InputfieldRepeater($) {
 			var $checkbox = $item.find('#delete_repeater' + pageID);
 
 			if($checkbox.is(":checked")) {
-				$checkbox.removeAttr('checked');
+				// $checkbox.removeAttr('checked'); // JQM
+				$checkbox.prop('checked', false);
 				$header.removeClass('ui-state-error').addClass('ui-state-default');
 				//if($parent.is('.InputfieldStateCollapsed')) $parent.toggleClass('InputfieldStateCollapsed', 100);
 				$item.removeClass('InputfieldRepeaterDeletePending');
 			} else {
-				$checkbox.attr('checked', 'checked');
+				// $checkbox.attr('checked', 'checked'); // JQM
+				$checkbox.prop('checked', true);
 				$header.removeClass('ui-state-default').addClass('ui-state-error');
 				if(!$item.hasClass('InputfieldStateCollapsed')) {
 					$header.find('.toggle-icon').click();
@@ -427,13 +429,14 @@ function InputfieldRepeater($) {
 		var $items = $repeater.children('.InputfieldContent').children('.Inputfields').children('.InputfieldRepeaterItem');
 		if(!$items.length) return false;
 		var $item = $items.eq(0);
+		var label, selector;
 		
 		if($item.hasClass('InputfieldStateCollapsed')) {
-			var label = ProcessWire.config.InputfieldRepeater.labels.openAll;
-			var selector = '.InputfieldStateCollapsed';
+			label = ProcessWire.config.InputfieldRepeater.labels.openAll;
+			selector = '.InputfieldStateCollapsed';
 		} else {
-			var label = ProcessWire.config.InputfieldRepeater.labels.collapseAll;
-			var selector = '.InputfieldRepeaterItem:not(.InputfieldStateCollapsed)';
+			label = ProcessWire.config.InputfieldRepeater.labels.collapseAll;
+			selector = '.InputfieldRepeaterItem:not(.InputfieldStateCollapsed)';
 		}
 		ProcessWire.confirm(label, function() {
 			$items.filter(selector).each(function() {
@@ -525,6 +528,8 @@ function InputfieldRepeater($) {
 		}
 	}
 
+	/*** DEPTH FUNCTIONS **********************************************************************************/
+	
 	/**
 	 * Determine the sortable depth of a repeater item and either return it or apply it
 	 * 
@@ -536,7 +541,8 @@ function InputfieldRepeater($) {
 	 */
 	function sortableDepth(ui, maxDepth, updateNow) {
 
-		var $depth = ui.item.find('.InputfieldRepeaterDepth');
+		var $wrap = ui.item.children('.InputfieldContent').children('.Inputfields').children('.InputfieldRepeaterItemDepth');
+		var $depth = $wrap.find('input');
 		var depth = -1;
 		var prevDepth = parseInt($depth.val());
 		var left = ui.position.left;
@@ -550,24 +556,112 @@ function InputfieldRepeater($) {
 			// console.log('increase depth to: ' + depth);
 		}
 
-		if(depth < 1) {
-			depth = 0;
-		} else if(depth > maxDepth) {
-			depth = maxDepth;
-		}
-
 		if(updateNow) {
-			if(depth) {
-				ui.item.css('margin-left', (depth * depthSize) + 'px');
-			} else {
-				ui.item.css('margin-left', 0);
-			}
-
-			$depth.val(depth);
+			depth = setItemDepth(ui.item, depth, maxDepth);
 			ui.item.children('.InputfieldHeader').removeClass('ui-state-error');
 		}
 
 		return depth;
+	}
+
+	/**
+	 * Set repeater item depth
+	 * 
+	 * @param $item Repeater item
+	 * @param int depth Depth to set
+	 * @param int maxDepth Max depth (you can optionally omit this if depth is already validated for the max)
+	 * @param bool noValidate Specify true to prevent depth validation, otherwise omit
+	 * @returns int Returns adjusted depth or -1 on fail
+	 * 
+	 */
+	function setItemDepth($item, depth, maxDepth, noValidate) {
+		
+		noValidate = typeof noValidate === "undefined" ? false : noValidate;
+		
+		if(depth < 1) depth = 0;
+		if(typeof maxDepth !== 'undefined' && depth > maxDepth) depth = maxDepth;
+		if(!$item.hasClass('InputfieldRepeaterItem')) $item = $item.closest('.InputfieldRepeaterItem');
+		if(!$item.length) return -1;
+	
+		var $depthInput = $item.children('.InputfieldContent').children('.Inputfields')
+			.children('.InputfieldRepeaterItemDepth').find('input');
+		
+		if(!$depthInput.length) {
+			console.log('Cannot find depth input for ' + $item.attr('id'));
+		}
+
+		if(!noValidate && $item.closest('.InputfieldRepeater').hasClass('InputfieldRepeaterFamilyFriendly')) {
+			var $prevItem = $item.prev('.InputfieldRepeaterItem:not(.InputfieldRepeaterNewItem)'); 
+			if($prevItem.length) {
+				var prevItemDepth = parseInt($prevItem.attr('data-depth'));
+				if(depth - prevItemDepth > 1) depth = prevItemDepth + 1;
+			} else {
+				depth = 0;
+			}
+		}
+	
+		$depthInput.val(depth);
+		$item.attr('data-depth', depth);
+		
+		if(depth > 0) {
+			$item.css('margin-left', (depth * depthSize) + 'px');
+		} else {
+			$item.css('margin-left', 0);
+		}
+		
+		return depth;
+	}
+
+	/**
+	 * Get repeater item depth
+	 * 
+	 * @param $item Repeater item
+	 * @returns int Returns depth or -1 on fail
+	 * 
+	 */
+	function getItemDepth($item) {
+		if(!$item.hasClass('InputfieldRepeaterItem')) $item = $item.closest('.InputfieldRepeaterItem');
+		if(!$item.length) return -1;
+		return parseInt($item.attr('data-depth'));
+	}
+
+	/**
+	 * Get all depth children for given repeater item
+	 * 
+	 * @param $item Repeater item
+	 * @returns {Array}
+	 * 
+	 */
+	function getDepthChildren($item) {
+		
+		var children = [];
+		var n = 0;
+		var startDepth = parseInt($item.attr('data-depth'));
+		var pageId = $item.attr('data-page');
+		var pageIdClass = 'Inputfield_repeater_item_' + pageId;
+
+		// ui.sortable adds additional copies of $item, so make sure we have the last one
+		while($item.hasClass(pageIdClass)) {
+			var $nextItem = $item.next('.InputfieldRepeaterItem:not(.InputfieldRepeaterNewItem)');
+			if(!$nextItem.length || !$nextItem.hasClass(pageIdClass)) break;
+			$item = $nextItem;
+		}
+		
+		do {
+			// var $child = $item.next('.InputfieldRepeaterItem:not(.' + pageIdClass + '):not(.InputfieldRepeaterNewItem)');
+			var $child = $item.next('.InputfieldRepeaterItem:not(.InputfieldRepeaterNewItem)');
+			if(!$child.length) break;
+			
+			var childDepth = parseInt($child.attr('data-depth'));
+			if(!childDepth || childDepth <= startDepth) break;
+			
+			$item = $child;
+			children[n] = $child;
+			n++;
+			
+		} while(true);
+		
+		return children;
 	}
 	
 	/*** INIT FUNCTIONS **********************************************************************************/
@@ -576,14 +670,15 @@ function InputfieldRepeater($) {
 	 * Initialize repeater item depths 
 	 * 
 	 * Applies a left-margin to repeater items consistent with with value in 
-	 * each item's input.InputfieldRepeaterDepth hidden input. 
+	 * each item's '.InputfieldRepeaterItemDepth input' hidden input. 
 	 * 
 	 * @param $inputfieldRepeater
 	 * 
 	 */
 	function initDepths($inputfieldRepeater) {
-		$inputfieldRepeater.find('.InputfieldRepeaterDepth').each(function() {
-			var $depth = $(this);
+		$inputfieldRepeater.find('.InputfieldRepeaterItemDepth').each(function() {
+			var $wrap = $(this);
+			var $depth = $wrap.find('input');
 			var depth = $depth.val();
 			var $item = $depth.closest('.InputfieldRepeaterItem');
 			var currentLeft = $item.css('margin-left');
@@ -607,12 +702,15 @@ function InputfieldRepeater($) {
 	function initSortable($inputfieldRepeater, $inputfields) {
 
 		var maxDepth = parseInt($inputfieldRepeater.attr('data-depth'));
+		var depthChildren = [];
+		var startDepth = 0;
+		var familyFriendly = $inputfieldRepeater.hasClass('InputfieldRepeaterFamilyFriendly');
 		var sortableOptions = {
 			items: '> li:not(.InputfieldRepeaterNewItem)',
 			handle: '.InputfieldRepeaterDrag',
 			start: function(e, ui) {
 				ui.item.find('.InputfieldHeader').addClass("ui-state-highlight");
-
+			
 				// CKEditor doesn't like being sorted, do destroy when sort starts, and reload after sort
 				ui.item.find('textarea.InputfieldCKEditorNormal.InputfieldCKEditorLoaded').each(function() {
 					$(this).removeClass('InputfieldCKEditorLoaded');
@@ -625,11 +723,38 @@ function InputfieldRepeater($) {
 				ui.item.find('.InputfieldTinyMCE textarea').each(function() {
 					tinyMCE.execCommand('mceRemoveControl', false, $(this).attr('id'));
 				});
+			
+				if(familyFriendly && maxDepth > 0) {
+					// remember and hide depth children
+					startDepth = parseInt(ui.item.attr('data-depth'));
+					depthChildren = getDepthChildren(ui.item);
+					for(var n = 0; n < depthChildren.length; n++) {
+						depthChildren[n].slideUp('fast');
+					}
+				}
 			},
 
 			stop: function(e, ui) {
 				if(maxDepth > 0) {
 					sortableDepth(ui, maxDepth, true);
+				}
+				
+				// update/move and show depth children
+				if(maxDepth > 0 && familyFriendly && depthChildren.length) {
+					var $item = ui.item;
+					var stopDepth = parseInt($item.attr('data-depth'));
+					var diffDepth = stopDepth - startDepth;
+					for(var n = 0; n < depthChildren.length; n++) {
+						var $child = depthChildren[n];
+						if(diffDepth != 0) {
+							var itemDepth = getItemDepth($child);
+							setItemDepth($child, itemDepth + diffDepth, maxDepth, true);
+						}
+						$item.after($child);
+						$child.slideDown('fast');
+						$item = $child;
+					}
+					depthChildren = [];
 				}
 
 				ui.item.find('.InputfieldHeader').removeClass("ui-state-highlight");
@@ -646,6 +771,7 @@ function InputfieldRepeater($) {
 				ui.item.find('.InputfieldTinyMCE textarea').each(function() {
 					tinyMCE.execCommand('mceAddControl', false, $(this).attr('id'));
 				});
+				
 			}
 		};
 
@@ -745,17 +871,18 @@ function InputfieldRepeater($) {
 	 * 
 	 */
 	function initRepeater($this) {
+		var $inputfields, $inputfieldRepeater, isItem;
 
 		if($this.hasClass('InputfieldRepeaterItem')) {
 			// single repeater item
-			var $inputfields = $this;
-			var $inputfieldRepeater = $this.closest('.InputfieldRepeater');
-			var isItem = true;
+			$inputfields = $this;
+			$inputfieldRepeater = $this.closest('.InputfieldRepeater');
+			isItem = true;
 		} else {
 			// enter repeater
-			var $inputfields = $this.find('.Inputfields:eq(0)');
-			var $inputfieldRepeater = $this;
-			var isItem = false;
+			$inputfields = $this.find('.Inputfields:eq(0)');
+			$inputfieldRepeater = $this;
+			isItem = false;
 		}
 
 		if($inputfields.hasClass('InputfieldRepeaterInit')) return;

@@ -17,10 +17,43 @@ require_once(__DIR__ . '/boot.php');
  * ~~~~~
  * #pw-body
  * 
- * ProcessWire 3.x, Copyright 2020 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2021 by Ryan Cramer
  * https://processwire.com
- * 
+ *
+ * Default API vars (A-Z) 
+ * ======================
+ * @property AdminTheme|AdminThemeFramework|null $adminTheme
+ * @property WireCache $cache
+ * @property WireClassLoader $classLoader
+ * @property Config $config
+ * @property WireDatabasePDO $database
+ * @property WireDateTime $datetime
+ * @property Fieldgroups $fieldgroups
+ * @property Fields $fields
+ * @property Fieldtypes $fieldtypes
+ * @property WireFileTools $files
  * @property Fuel $fuel
+ * @property WireHooks $hooks
+ * @property WireInput $input
+ * @property Languages $languages (present only if LanguageSupport installed)
+ * @property WireLog $log
+ * @property WireMailTools $mail
+ * @property Modules $modules
+ * @property Notices $notices
+ * @property Page $page
+ * @property Pages $pages
+ * @property Permissions $permissions
+ * @property Process|ProcessPageView $process
+ * @property WireProfilerInterface $profiler
+ * @property Roles $roles
+ * @property Sanitizer $sanitizer
+ * @property Session $session
+ * @property Templates $templates
+ * @property Paths $urls
+ * @property User $user
+ * @property Users $users
+ * @property ProcessWire $wire
+ * @property WireShutdown $shutdown
  * 
  * @method init()
  * @method ready()
@@ -46,13 +79,13 @@ class ProcessWire extends Wire {
 	 * Reversion revision number
 	 * 
 	 */
-	const versionRevision = 158;
+	const versionRevision = 171;
 
 	/**
 	 * Version suffix string (when applicable)
 	 * 
 	 */
-	const versionSuffix = 'dev';
+	const versionSuffix = '';
 
 	/**
 	 * Minimum required index.php version, represented by the PROCESSWIRE define
@@ -164,9 +197,6 @@ class ProcessWire extends Wire {
 	/**
 	 * Fuel manages ProcessWire API variables
 	 * 
-	 * This will replace the static $fuel from the Wire class in PW 3.0.
-	 * Currently it is just here as a placeholder.
-	 *
 	 * @var Fuel|null
 	 *
 	 */
@@ -330,6 +360,7 @@ class ProcessWire extends Wire {
 		$version = self::versionMajor . "." . self::versionMinor . "." . self::versionRevision; 
 		$config->version = $version;
 		$config->versionName = trim($version . " " . self::versionSuffix);
+		$config->moduleServiceKey .= str_replace('.', '', $version);
 		
 		// $config->debugIf: optional setting to determine if debug mode should be on or off
 		if($config->debugIf && is_string($config->debugIf)) {
@@ -446,9 +477,9 @@ class ProcessWire extends Wire {
 		}
 		
 		$notices = new Notices();
+		$this->wire('notices', $notices, true); // first so any API var can send notices
 		$this->wire('urls', $config->urls); // shortcut API var
-		$this->wire('log', new WireLog(), true); 
-		$this->wire('notices', $notices, true); 
+		$this->wire('log', new WireLog(), true);
 		$this->wire('sanitizer', new Sanitizer()); 
 		$this->wire('datetime', new WireDateTime());
 		$this->wire('files', new WireFileTools());
@@ -467,7 +498,9 @@ class ProcessWire extends Wire {
 	
 		/** @var WireCache $cache */
 		$cache = $this->wire('cache', new WireCache(), true); 
-		$cache->preload($config->preloadCacheNames); 
+		$cacheNames = $config->preloadCacheNames;
+		if($database->getEngine() === 'innodb') $cacheNames[] = 'InnoDB.stopwords';
+		$cache->preload($cacheNames); 
 		
 		$modules = null;
 		try { 		
@@ -760,11 +793,20 @@ class ProcessWire extends Wire {
 		$this->wire($key, $value, $lock);
 		return $this;
 	}
-	
+
+	/**
+	 * Get API var directly
+	 * 
+	 * @param string $key
+	 * @return mixed
+	 * 
+	 */
 	public function __get($key) {
 		if($key === 'fuel') return $this->fuel;
 		if($key === 'shutdown') return $this->shutdown;
 		if($key === 'instanceID') return $this->instanceID;
+		$value = $this->fuel->get($key);
+		if($value !== null) return $value;
 		return parent::__get($key);
 	}
 

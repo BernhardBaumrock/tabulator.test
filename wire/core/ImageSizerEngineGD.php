@@ -272,7 +272,7 @@ class ImageSizerEngineGD extends ImageSizerEngine {
 
 			// current version is already the desired result, we only may have to compress JPEGs but leave GIF and PNG as is:
 			
-			if(!$isModified && !$this->webpOnly && ($this->imageType == \IMAGETYPE_PNG || $this->imageType == \IMAGETYPE_GIF)) {
+			if(!$isModified && !$this->webpOnly && !$this->webpAdd && ($this->imageType == \IMAGETYPE_PNG || $this->imageType == \IMAGETYPE_GIF)) {
 				$result = @copy($srcFilename, $dstFilename);
 				if(isset($image) && is_resource($image)) @imagedestroy($image); // clean up
 				if(isset($image)) $image = null;
@@ -862,7 +862,8 @@ class ImageSizerEngineGD extends ImageSizerEngine {
 		} else if($this->imageType == IMAGETYPE_GIF) {
 			// @mrx GIF transparency
 			$transparentIndex = imagecolortransparent($image);
-			$transparentColor = $transparentIndex != -1 ? @imagecolorsforindex($image, $transparentIndex) : 0;
+			// $transparentColor = $transparentIndex != -1 ? @imagecolorsforindex($image, $transparentIndex) : 0;
+			$transparentColor = $transparentIndex != -1 ? imagecolorsforindex($image, ($transparentIndex < imagecolorstotal($image) ? $transparentIndex : $transparentIndex - 1)) : 0;
 			if(!empty($transparentColor)) {
 				$transparentNew = imagecolorallocate($im, $transparentColor['red'], $transparentColor['green'], $transparentColor['blue']);
 				$transparentNewIndex = imagecolortransparent($im, $transparentNew);

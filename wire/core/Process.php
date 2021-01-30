@@ -20,6 +20,7 @@
  * https://processwire.com/about/license/mit/
  * 
  * @method string|array execute()
+ * @method string|array executeUnknown() Called when urlSegment matches no execute[Method], only if implemented.
  * @method Process headline(string $headline)
  * @method Process browserTitle(string $title)
  * @method Process breadcrumb(string $href, string $label)
@@ -28,7 +29,7 @@
  * @method void upgrade($fromVersion, $toVersion)
  * @method Page installPage($name = '', $parent = null, $title = '', $template = 'admin', $extras = array()) #pw-internal
  * @method int uninstallPage() #pw-internal
- * @method string executeNavJSON(array $options = array()) #pw-internal @todo
+ * @method string|array executeNavJSON(array $options = array()) #pw-internal @todo
  * @method void ready()
  * @method void setConfigData(array $data)
  * @method void executed($methodName) Hook called after a method has been executed in the Process
@@ -599,5 +600,25 @@ abstract class Process extends WireData implements Module {
 		if(!$moduleID) return new NullPage();
 		$page = $this->wire('pages')->get("process=$moduleID, include=all"); 
 		return $page;
+	}
+
+	/**
+	 * URL to redirect to after non-authenticated user is logged-in, or false if module does not support
+	 * 
+	 * When supported, module should gather any input GET vars and URL segments that it recognizes,
+	 * sanitize them, and return a URL for that request. ProcessLogin will redirect to the returned URL
+	 * after user has successfully authenticated. 
+	 * 
+	 * If module does not support this, or only needs to support an integer 'id' GET var, then this
+	 * method can return false. 
+	 * 
+	 * @param Page $page Requested page
+	 * @return bool|string
+	 * @sine 3.0.167
+	 * 
+	 */
+	public static function getAfterLoginUrl(Page $page) {
+		if($page) {}
+		return false;
 	}
 }

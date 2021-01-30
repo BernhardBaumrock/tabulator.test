@@ -58,6 +58,14 @@ class WireDatabasePDOStatement extends \PDOStatement {
 	protected $debugNote = '';
 
 	/**
+	 * Debug mode?
+	 * 
+	 * @var bool
+	 * 
+	 */
+	protected $debugMode = false;
+	
+	/**
 	 * Construct
 	 * 
 	 * PDO requires the PDOStatement constructor to be protected for some reason
@@ -67,6 +75,7 @@ class WireDatabasePDOStatement extends \PDOStatement {
 	 */
 	protected function __construct(WireDatabasePDO $database) { 
 		$this->database = $database;
+		$this->debugMode = $database->debugMode;
 	}
 
 	/**
@@ -116,7 +125,7 @@ class WireDatabasePDOStatement extends \PDOStatement {
 	 */
 	public function bindValue($parameter, $value, $data_type = \PDO::PARAM_STR) {
 		$result = parent::bindValue($parameter, $value, $data_type);
-		if(strpos($parameter, ':') === 0) {
+		if($this->debugMode && strpos($parameter, ':') === 0) {
 			$this->setDebugParam($parameter, $value, $data_type);
 		} else {
 			// note we do not handle index/question-mark parameters for debugging
@@ -126,26 +135,55 @@ class WireDatabasePDOStatement extends \PDOStatement {
 	
 	/**
 	 * Execute prepared statement
+	 *
+	 * @param array|null $input_parameters
+	 * @return bool
+	 * @throws \PDOException
+	 *
+	 */
+	public function execute($input_parameters = NULL) {
+		if($this->debugMode) {
+			return $this->executeDebug($input_parameters);
+		} else {
+			return parent::execute($input_parameters);
+		}
+	}
+
+	/**
+	 * Execute prepared statement when in debug mode only
 	 * 
 	 * @param array|null $input_parameters
 	 * @return bool
+	 * @throws \PDOException
 	 * 
 	 */
-	public function execute($input_parameters = NULL) {
+	public function executeDebug($input_parameters = NULL) {
 	
 		$timer = Debug::startTimer();
-		$result = parent::execute($input_parameters);
+		$exception = null;
+		
+		try {
+			$result = parent::execute($input_parameters);
+		} catch(\PDOException $e) {
+			$exception = $e;
+			$result = false;
+		}
+		
 		$timer = Debug::stopTimer($timer, 'ms');
 		
-		if(!$this->database) return $result;
+		if(!$this->database) {
+			if($exception) throw $exception;
+			return $result;
+		}
 		
 		if(is_array($input_parameters)) {
 			foreach($input_parameters as $key => $value) {
-				$this->setDebugParam($key, $value);
+				if(is_string($key)) $this->setDebugParam($key, $value);
 			}
 		}
 	
 		$debugNote = trim("$this->debugNote [$timer]");
+		if($exception) $debugNote .= ' FAIL SQLSTATE[' . $exception->getCode() . ']';
 		
 		if($this->debugParamsQty) {
 			$sql = $this->queryString;
@@ -167,6 +205,8 @@ class WireDatabasePDOStatement extends \PDOStatement {
 		} else {
 			$this->database->queryLog($this->queryString, $debugNote); 
 		}
+		
+		if($exception) throw $exception;
 		
 		return $result;
 	}

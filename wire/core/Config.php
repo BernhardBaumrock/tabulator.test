@@ -130,6 +130,7 @@
  * @property string $moduleServiceKey API key for modules web service #pw-group-modules
  * @property bool $moduleCompile Allow use of compiled modules? #pw-group-modules
  * @property array $wireMail Default WireMail module settings. #pw-group-modules
+ * @property array $moduleInstall Admin module install options you allow. #pw-group-modules
  * 
  * @property array $substituteModules Associative array with names of substitute modules for when requested module doesn't exist #pw-group-modules
  * @property array $logs Additional core logs to keep #pw-group-admin
@@ -148,10 +149,12 @@
  * 
  * @property string $userAuthSalt Salt generated at install time to be used as a secondary/non-database salt for the password system. #pw-group-session
  * @property string $userAuthHashType Default is 'sha1' - used only if Blowfish is not supported by the system. #pw-group-session
+ * @property string $tableSalt #pw-group-system Additional hash for other (non-authentication) purposes, present only on installations start from 3.0.164+. #pw-group-system
  * 
  * @property bool $internal This is automatically set to FALSE when PW is externally bootstrapped. #pw-group-runtime
  * @property bool $external This is automatically set to TRUE when PW is externally bootstrapped. #pw-internal
  * @property bool $cli This is automatically set to TRUE when PW is booted as a command line (non HTTP) script. #pw-group-runtime
+ * @property string $serverProtocol Current server protocol, one of: HTTP/1.1, HTTP/1.0, HTTP/2, or HTTP/2.0. #pw-group-runtime #since 3.0.166
  * @property string $versionName This is automatically populated with the current PW version name (i.e. 2.5.0 dev) #pw-group-runtime
  * @property int $inputfieldColumnWidthSpacing Used by some admin themes to commmunicate to InputfieldWrapper at runtime. #pw-internal
  * @property array InputfieldWrapper Settings specific to InputfieldWrapper class #pw-internal
@@ -160,6 +163,7 @@
  * @property string|null $pagerHeadTags Populated at runtime to contain `<link rel=prev|next />` tags for document head, after pagination has been rendered by MarkupPagerNav module. #pw-group-runtime 
  * @property array $statusFiles File inclusions for ProcessWire’s runtime statuses/states. #pw-group-system @since 3.0.142
  * @property int $status Value of current system status/state corresponding to ProcessWire::status* constants. #pw-internal
+ * @property null|bool $disableUnknownMethodException Disable the “Method does not exist or is not callable in this context” exception. (default=null) #pw-internal
  * 
  * @property int $rootPageID Page ID of homepage (usually 1) #pw-group-system-IDs
  * @property int $adminRootPageID Page ID of admin root page #pw-group-system-IDs
@@ -190,6 +194,28 @@ class Config extends WireData {
 	 * 
 	 */
 	const debugVerbose = 2;
+
+	/**
+	 * Get config property
+	 * 
+	 * @param string $key
+	 * @return string|array|int|bool|object|callable|null
+	 * 
+	 */
+	public function get($key) {
+		$value = parent::get($key);
+		if($value === null) {
+			// runtime properties
+			if($key === 'serverProtocol') {
+				$value = $this->serverProtocol();
+			} else if($key === 'tableSalt') {
+				$value = parent::get('installed');
+				if(!$value) $value = @filemtime($this->paths->assets . 'active.php'); 
+				$this->data['tableSalt'] = $value;
+			}
+		}
+		return $value;
+	}
 
 	/**
 	 * Get URL for requested resource or module
@@ -645,6 +671,21 @@ class Config extends WireData {
 	public function installedBefore($date) {
 		if(!ctype_digit("$date")) $date = strtotime($date);
 		return $this->installed < $date; 
+	}
+
+	/**
+	 * Get current server protocol (for example: "HTTP/1.1")
+	 * 
+	 * This can be accessed by property `$config->serverProtocol`
+	 * 
+	 * @return string
+	 * @since 3.0.166
+	 * 
+	 */
+	protected function serverProtocol() {
+		$protos = array('HTTP/1.1', 'HTTP/1.0', 'HTTP/2', 'HTTP/2.0');
+		$proto = isset($_SERVER['SERVER_PROTOCOL']) ? $_SERVER['SERVER_PROTOCOL'] : 'HTTP/1.1';
+		return $protos[(int) array_search($proto, $protos, true)];
 	}
 	
 	/**

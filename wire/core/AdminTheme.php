@@ -10,10 +10,12 @@
  * This file is licensed under the MIT license. 
  * https://processwire.com/about/license/mit/
  * 
- * ProcessWire 3.x, Copyright 2018 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2021 by Ryan Cramer
  * https://processwire.com
  * 
  * @property int|string $version Current admin theme version
+ * @property string $url URL to admin theme
+ * @property string $path Disk path to admin theme
  * 
  * @method void install()
  * @method void uninstall()
@@ -156,13 +158,73 @@ abstract class AdminTheme extends WireData implements Module {
 
 		if($session->get('hidpi')) $this->addBodyClass('hidpi-device');
 		if($session->get('touch')) $this->addBodyClass('touch-device'); 
-		
+
 		$this->addBodyClass($this->className());
 	}
 
+	/**
+	 * Get property
+	 * 
+	 * @param string $key
+	 * @return int|mixed|null|string
+	 * 
+	 */
 	public function get($key) {
-		if($key == 'version') return $this->version;
+		if($key === 'version') return $this->version;
+		if($key === 'url') return $this->url();
+		if($key === 'path') return $this->path();
 		return parent::get($key); 
+	}
+	
+	/**
+	 * Get URL to this admin theme
+	 *
+	 * @return string
+	 * @since 3.0.171
+	 *
+	 */
+	public function url() {
+		return $this->wire()->config->urls($this->className());
+	}
+
+	/**
+	 * Get disk path to this admin theme
+	 * 
+	 * @return string
+	 * @since 3.0.171
+	 * 
+	 */
+	public function path() {
+		$config = $this->wire()->config;
+		$path = $config->paths($this->className());
+		if(empty($path)) {
+			$class = $this->className();
+			$path = $config->paths->modules . "AdminTheme/$class/";
+			if(!is_dir($path)) {
+				$path = $config->paths->siteModules . "$class/";
+				if(!is_dir($path)) $path = __DIR__;
+			}
+		}
+		return $path;
+	}
+
+	/**
+	 * Get predefined translated label by key for labels shared among admin themes
+	 * 
+	 * @param string $key
+	 * @param string $val Value to return if label not available
+	 * @return string
+	 * @since 3.0.162
+	 * 
+	 */
+	public function getLabel($key, $val = '') {
+		switch($key) {
+			case 'search-help': return $this->_('help'); // Localized term to type for search-engine help (3+ chars) 
+			case 'search-tip': return $this->_('Try “help”'); // // Search tip (indicating your translated “help” term)
+			case 'advanced-mode': return $this->_('Advanced Mode');
+			case 'debug': return $this->_('Debug'); 
+		}
+		return $val;
 	}
 
 	/**
@@ -170,7 +232,8 @@ abstract class AdminTheme extends WireData implements Module {
 	 *
 	 */
 	public function isCurrent() {
-		return $this->wire('adminTheme') === $this; 
+		$adminTheme = $this->wire()->adminTheme;
+		return $adminTheme && $adminTheme->className() === $this->className();
 	}
 
 	/**
@@ -261,7 +324,7 @@ abstract class AdminTheme extends WireData implements Module {
 	 * Omit the first argument to return all classes in an array.
 	 * 
 	 * @param string $name Tag or item name, i.e. “input”, or omit to return all defined [tags=classes]
-	 * @param bool $getArray Specify true to return array of class name(s) rather than string (default=false). $tagName argument required.
+	 * @param bool $getArray Specify true to return array of class name(s) rather than string (default=false). $name argument required.
 	 * @return string|array Returns string or array of class names, or array of all [tags=classes] or $tagName argument is empty.
 	 * 
 	 */

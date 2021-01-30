@@ -18,7 +18,7 @@
  * @property int $maxWidth Maximum layout width in pixels, or 0 for no max (default=1600).
  * @property bool|int $groupNotices Whether or not notices should be grouped by type
  * @property string $inputSize Size for input/select elements. One of "s" for small, "m" for medium (default), or "l" for large. 
- * @property bool|int $noGrid When true, do not use uk-width classes for Inputfields (use CSS percentages instead). 
+ * @property bool|int $ukGrid When true, use uk-width classes for Inputfields (rather than CSS percentages). 
  * 
  * 
  */
@@ -27,7 +27,7 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 	public static function getModuleInfo() {
 		return array(
 			'title' => 'Uikit',
-			'version' => 30,
+			'version' => 31,
 			'summary' => 'Uikit v3 admin theme',
 			'autoload' => 'template=admin', 
 			'requires' => 'ProcessWire>=3.0.100'
@@ -81,8 +81,7 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 		$this->set('maxWidth', 1600); 
 		$this->set('groupNotices', true);
 		$this->set('inputSize', 'm'); // m=medium (default), s=small, l=large
-		$this->set('noGrid', false); 
-		
+		$this->set('ukGrid', false); 
 		$this->setClasses(array(
 			'input' => 'uk-input',
 			'input-small' => 'uk-input uk-form-small',
@@ -150,8 +149,12 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 			}
 		}
 		
-		if($this->noGrid) {
+		if(!$this->ukGrid) {
 			$this->addClass('body', 'AdminThemeUikitNoGrid'); 
+		}
+		
+		if($this->className() !== 'AdminThemeUikit') {
+			$this->addBodyClass('AdminThemeUikit');
 		}
 		
 		$session->removeFor('Page', 'appendEditUrl');
@@ -261,6 +264,13 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 	 * 
 	 * This updates the Inputfield classes and settings for Uikit. 
 	 * 
+	 * - themeBorder: none, hide, card, line
+	 * - themeOffset: s, m, l
+	 * - themeInputSize: s, m, l
+	 * - themeInputWidth: xs, s, m, l, f
+	 * - themeColor: primary, secondary, warning, danger, success, highlight, none
+	 * - themeBlank: no input borders, true or false
+	 * 
 	 * @param HookEvent $event
 	 * 
 	 */
@@ -278,7 +288,7 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 		$isWrapper = $inputfield instanceof InputfieldWrapper && !$isFieldset && !$isMarkup;
 		$ukWidthClass = 'uk-width-1-1';
 		$globalInputSize = $this->get('inputSize');
-		$noGrid = $this->get('noGrid');
+		$ukGrid = $this->get('ukGrid');
 		$themeColor = '';
 		$themeBorder = '';
 		$themeOffset = '';
@@ -302,7 +312,7 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 			return; // no further settings needed for button
 		}
 
-		if(!$noGrid) {
+		if($ukGrid) {
 			$ukWidthClass = $this->getUkWidthClass($columnWidth, $widths); 
 			if($ukWidthClass) $wrapClasses[] = $ukWidthClass;
 		}
@@ -960,6 +970,7 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 	 *  - `getURL` (bool): Return only the URL? (default=false)
 	 *  - `getNative` (bool): Return only the ProcessWire brand logo? (default=false)
 	 *  - `alt` (string): Alt attribute for <img> tag (default=auto)
+	 *  - `height` (string): Height style to use for SVG images (default='')
 	 * @return string
 	 * 
 	 */
@@ -974,18 +985,21 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 			'getURL' => false, 
 			'getNative' => false,
 			'alt' => '',
+			'height' => '',
 		);
 	
 		$options = array_merge($defaults, $options);
 		$logoURL = $this->get('logoURL');
+		$svg = false;
 		
 		if(empty($logoURL) || $options['getNative'] || strpos($logoURL, '//') !== false) {
 			$native = true;
-			$logoURL = $config->urls($this->className()) . self::logo;
+			$logoURL = $this->url() . self::logo;
 		} else {
 			$logoURL = $config->urls->root . ltrim($logoURL, '/');
 			$logoURL = $sanitizer->entities($logoURL);
 			$native = false;
+			$svg = strtolower(pathinfo($logoURL, PATHINFO_EXTENSION)) === 'svg';
 		}
 		
 		if($options['getURL']) return $logoURL;
@@ -995,7 +1009,9 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 			$alt = "ProcessWire $config->version";
 		}
 		$class = 'pw-logo ' . ($native ? 'pw-logo-native' : 'pw-logo-custom');
-		$img = "<img class='$class' src='$logoURL' alt='$alt' />";
+		$attr = "class='$class' src='$logoURL' alt='$alt' ";
+		if($svg && $options['height']) $attr .= "style='height:$options[height]' ";
+		$img = "<img $attr/>";
 		
 		return $img;
 	}
@@ -1008,6 +1024,28 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 	 */
 	public function getLogoURL() {
 		return $this->getLogo(array('getURL' => true));
+	}
+	
+	/**
+	 * Get URL to this admin theme
+	 *
+	 * @return string
+	 * @since 3.0.171
+	 *
+	 */
+	public function url() {
+		return $this->wire()->config->urls->modules . 'AdminTheme/AdminThemeUikit/';
+	}
+	
+	/**
+	 * Get disk path to this admin theme
+	 *
+	 * @return string
+	 * @since 3.0.171
+	 *
+	 */
+	public function path() {
+		return __DIR__ . '/';
 	}
 
 	/**
@@ -1025,9 +1063,9 @@ class AdminThemeUikit extends AdminThemeFramework implements Module, Configurabl
 			if(strpos($cssURL, '//') === false) $cssURL = $config->urls->root . ltrim($cssURL, '/');
 			return $this->wire('sanitizer')->entities($cssURL);
 		} else if(self::dev && strpos(__FILE__, '/wire/modules/') === false) {
-			return $config->urls->adminTemplates . 'uikit/custom/pw.css?v=' . $version;
+			return $this->url() . 'uikit/custom/pw.css?v=' . $version;
 		} else {
-			return $config->urls->adminTemplates . 'uikit/dist/css/uikit.pw.min.css?v=' . $version;
+			return $this->url() . 'uikit/dist/css/uikit.pw.min.css?v=' . $version;
 		}
 	}
 	

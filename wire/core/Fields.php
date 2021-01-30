@@ -266,8 +266,12 @@ class Fields extends WireSaveableItems {
 				$database->exec("RENAME TABLE `$prevTable` TO `tmp_$table`"); // QA
 				$database->exec("RENAME TABLE `tmp_$table` TO `$table`"); // QA
 			}
-			$item->type->renamedField($item, str_replace(Field::tablePrefix, '', $prevTable));
 			$item->prevTable = '';
+		}
+		
+		if(!$isNew && $item->prevName && $item->prevName != $item->name) {
+			$item->type->renamedField($item, $item->prevName);
+			$item->prevName = '';
 		}
 
 		if($item->prevFieldtype && $item->prevFieldtype->name != $item->type->name) {
@@ -295,6 +299,8 @@ class Fields extends WireSaveableItems {
 				}
 			}	
 		}
+		
+		if($item->type) $item->type->savedField($item);
 		
 		$this->getTags('reset');
 
@@ -424,7 +430,7 @@ class Fields extends WireSaveableItems {
 
 		$field_id = (int) $field->id;
 		$fieldgroup_id = (int) $fieldgroup->id; 
-		$database = $this->wire('database');
+		$database = $this->wire()->database;
 
 		$newValues = $field->getArray();
 		$oldValues = $fieldOriginal->getArray();
@@ -502,13 +508,12 @@ class Fields extends WireSaveableItems {
 		// if there is something in data, then JSON encode it. If it's empty then make it null.
 		$data = count($data) ? wireEncodeJSON($data, true) : null;
 
-		if(is_null($data)) {
-			$data = 'NULL';
+		$query = $database->prepare('UPDATE fieldgroups_fields SET data=:data WHERE fields_id=:field_id AND fieldgroups_id=:fieldgroup_id');
+		if(empty($data)) {
+			$query->bindValue(':data', null, \PDO::PARAM_NULL); 
 		} else {
-			$data = "'" . $this->wire('database')->escapeStr($data) . "'";
+			$query->bindValue(':data', $data, \PDO::PARAM_STR); 
 		}
-		
-		$query = $database->prepare("UPDATE fieldgroups_fields SET data=$data WHERE fields_id=:field_id AND fieldgroups_id=:fieldgroup_id"); // QA
 		$query->bindValue(':field_id', $field_id, \PDO::PARAM_INT);
 		$query->bindValue(':fieldgroup_id', $fieldgroup_id, \PDO::PARAM_INT); 
 		$result = $query->execute();

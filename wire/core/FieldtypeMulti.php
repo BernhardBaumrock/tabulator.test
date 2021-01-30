@@ -478,10 +478,16 @@ abstract class FieldtypeMulti extends Fieldtype {
 			$query->data('_table', $table);
 			
 			foreach($filters as $selector) {
-				// @todo add support for OR values of $col or $value
-				$col = $sanitizer->fieldName($selector->field);
+				
+				$col = $selector->field;
 				$op = $selector->operator;
 				$value = $selector->value;
+			
+				if(is_array($col)) {
+					foreach($col as $k => $v) $col[$k] = $sanitizer->fieldName($v);
+				} else {
+					$col = $sanitizer->fieldName($col);
+				}
 				
 				if($col === 'sort') {
 					$desc = strpos($value, '-') === 0 ? '-' : '';
@@ -577,7 +583,6 @@ abstract class FieldtypeMulti extends Fieldtype {
 		$table = $database->escapeTable($table);
 		// note the Fulltext class can handle non-text values as well (when using non-partial text matching operators)
 		$ft = new DatabaseQuerySelectFulltext($query);
-		$this->wire($ft);
 		$ft->match($table, $col, $operator, $value);
 		return $query;
 	}
@@ -861,12 +866,12 @@ abstract class FieldtypeMulti extends Fieldtype {
 	 *
 	 * Possible template method: If overridden, children should NOT call this parent method. 
 	 *
-	 * @param DatabaseQuerySelect $query
+	 * @param PageFinderDatabaseQuerySelect $query
 	 * @param string $table The table name to use
 	 * @param string $subfield Name of the field (typically 'data', unless selector explicitly specified another)
 	 * @param string $operator The comparison operator
 	 * @param mixed $value The value to find
-	 * @return DatabaseQuery $query
+	 * @return PageFinderDatabaseQuerySelect|DatabaseQuerySelect $query
 	 *
 	 */
 	public function getMatchQuery($query, $table, $subfield, $operator, $value) {
@@ -878,12 +883,14 @@ abstract class FieldtypeMulti extends Fieldtype {
 		$database = $this->wire('database'); 
 		$table = $database->escapeTable($table);
 
-		if($subfield === 'count' && (empty($value) || ctype_digit(ltrim("$value", '-'))) 
-			&& in_array($operator, array("=", "!=", ">", "<", ">=", "<="))) {
+		if($subfield === 'count' 
+			&& (empty($value) || ctype_digit(ltrim("$value", '-'))) 
+			&& $database->isOperator($operator, WireDatabasePDO::operatorTypeComparison)) {
 
 			$value = (int) $value;
 			$t = $table . "_" . $n;
 			$c = $database->escapeTable($this->className()) . "_" . $n;
+			$operator = $database->escapeOperator($operator); 
 
 			$query->select("$t.num_$t AS num_$t");
 			$query->leftjoin(

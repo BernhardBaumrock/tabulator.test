@@ -120,8 +120,7 @@ abstract class DatabaseQuery extends WireData {
 	 * Get or set a bind option
 	 *
 	 * @param string|bool $optionName One of 'prefix' or 'global', boolean true to get/set all 
-	 * @param null|int|string|array $optionValue Omit when getting, Specify option value to set, or array when setting
-	 *     all
+	 * @param null|int|string|array $optionValue Omit when getting, Specify option value to set, or array when setting all
 	 * @return string|int|array
 	 * @since 3.0.157
 	 *
@@ -625,7 +624,7 @@ abstract class DatabaseQuery extends WireData {
 	/**
 	 * Return the generated SQL for specific query method
 	 *
-	 * @param string $method Specify method name to get SQL for
+	 * @param string $method Specify method name to get SQL for, or blank string for entire query
 	 * @return string
 	 * @since 3.0.157
 	 *
@@ -634,13 +633,23 @@ abstract class DatabaseQuery extends WireData {
 		
 		if(!$method) return $this->getQuery();
 		if(!isset($this->queryMethods[$method])) return '';
-		$methodName = 'getQuery' . ucfirst($method);
-		if(method_exists($this, $methodName)) return $this->$methodName();
 		
-		list($prepend, $split, $append) = $this->queryMethods[$method]; 
-		$values = $this->$method;
-		if(!is_array($values) || !count($values)) return '';
-		$sql = $prepend . implode($split, $values) . $append;
+		$methodName = 'getQuery' . ucfirst($method);
+		
+		if(method_exists($this, $methodName)) {
+			$sql = $this->$methodName();
+		} else {
+			list($prepend, $split, $append) = $this->queryMethods[$method];
+			$values = $this->$method;
+			if(!is_array($values)) return ''; 
+			foreach($values as $key => $value) {
+				if(!strlen(trim($value))) unset($values[$key]); // remove any blank values
+			}
+			if(!count($values)) return '';
+			$sql = trim(implode($split, $values)); 
+			if(!strlen($sql) || $sql === trim($split)) return '';
+			$sql = $prepend . $sql . $append;
+		}
 		
 		return $sql;	
 	}

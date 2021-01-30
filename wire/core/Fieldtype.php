@@ -46,6 +46,7 @@
  * @method bool deleteTemplateField(Template $template, Field $field)
  * @method Field cloneField(Field $field)
  * @method void renamedField(Field $field, $prevName) 
+ * @method void savedField(Field $field)
  * @method void install()
  * @method void uninstall()
  * 
@@ -521,6 +522,16 @@ abstract class Fieldtype extends WireData implements Module {
 	 * Example: an integer or text Fieldtype might not consider a "0" to be empty,
 	 * whereas a Page reference would. 
 	 * 
+	 * This method is primarily used by the PageFinder::whereEmptyValuePossible()
+	 * method to determine whether to include non-present (null) rows. 
+	 * 
+	 * 3.0.164+: If given a Selector object for $value, PageFinder is proposing 
+	 * handling the empty-value match condition internally rather than calling
+	 * the Fieldtype’s getMatchQuery() method. Return true if this Fieldtype would
+	 * prefer to handle the match, or false if not. Fieldtype modules do not need
+	 * to consider this unless they want to override the default empty value match
+	 * behavior in PageFinder::whereEmptyValuePossible().
+	 * 
 	 * #pw-group-finding
 	 * 
 	 * @param Field $field
@@ -693,12 +704,12 @@ abstract class Fieldtype extends WireData implements Module {
 	 * 
 	 * #pw-group-finding
 	 *
-	 * @param DatabaseQuerySelect $query
+	 * @param PageFinderDatabaseQuerySelect $query
 	 * @param string $table The table name to use
 	 * @param string $subfield Name of the subfield (typically 'data', unless selector explicitly specified another)
 	 * @param string $operator The comparison operator
 	 * @param mixed $value The value to find
-	 * @return DatabaseQuery $query
+	 * @return PageFinderDatabaseQuerySelect|DatabaseQuerySelect $query
 	 * @throws WireException
 	 *
 	 */
@@ -711,10 +722,31 @@ abstract class Fieldtype extends WireData implements Module {
 
 		$table = $database->escapeTable($table); 
 		$subfield = $database->escapeCol($subfield);
-		$quoteValue = $database->quote($value); 
-
-		$query->where("{$table}.{$subfield}{$operator}$quoteValue"); // QA
+		$operator = $database->escapeOperator($operator, WireDatabasePDO::operatorTypeComparison); 
+		$query->where("{$table}.{$subfield}{$operator}?", $value); // QA
 		return $query; 
+	}
+
+	/**
+	 * Get or update query to sort by given $field or $subfield
+	 * 
+	 * Return false if this Fieldtype does not have built-in sort logic and PageFinder should handle it. 
+	 * Return string of query to add to ORDER BY statement, or boolean true if method added it already. 
+	 * 
+	 * #pw-internal
+	 *
+	 * @param Field $field
+	 * @param DatabaseQuerySelect $query
+	 * @param string $table
+	 * @param string $subfield
+	 * @param bool $desc True for descending, false for ascending
+	 * @return bool|string
+	 * @since 3.0.167
+	 * 
+	 */
+	public function getMatchQuerySort(Field $field, $query, $table, $subfield, $desc) {
+		if($query && $table && $field && $subfield && $desc) {}
+		return false;
 	}
 
 	/**
@@ -1381,12 +1413,12 @@ abstract class Fieldtype extends WireData implements Module {
 	 *
 	 */
 	public function ___replacePageField(Page $src, Page $dst, Field $field) {
-		$database = $this->wire('database');
+		$database = $this->wire()->database;
 		$table = $database->escapeTable($field->table);
 		$this->emptyPageField($dst, $field); 
 		// move the data
 		$sql = "UPDATE `$table` SET pages_id=:dstID WHERE pages_id=:srcID";
-		$query = $this->wire('database')->prepare($sql);
+		$query = $database->prepare($sql);
 		$query->bindValue(':dstID', (int) $dst->id);
 		$query->bindValue(':srcID', (int) $src->id);
 		$result = $query->execute();
@@ -1411,7 +1443,7 @@ abstract class Fieldtype extends WireData implements Module {
 	 * 
 	 */
 	public function ___deleteTemplateField(Template $template, Field $field) {
-		return $this->wire('fields')->deleteFieldDataByTemplate($field, $template); 
+		return $this->wire()->fields->deleteFieldDataByTemplate($field, $template); 
 	}
 
 	/**
@@ -1441,6 +1473,19 @@ abstract class Fieldtype extends WireData implements Module {
 	 */
 	public function ___renamedField(Field $field, $prevName) {
 		if($field && $prevName) {}
+	}
+
+	/**
+	 * Called when Field using this Fieldtype has been saved 
+	 * 
+	 * This is primarily so that Fieldtype modules can identify when their fields are 
+	 * saved without having to add a hook to the $fields API var. 
+	 * 
+	 * @param Field $field
+	 * @since 3.0.171
+	 * 
+	 */
+	public function ___savedField(Field $field) {
 	}
 
 	/**
@@ -1490,7 +1535,7 @@ abstract class Fieldtype extends WireData implements Module {
 	 * 
 	 * #pw-group-other
 	 * 
-	 * @throws WireException Should throw an Exception if uninstsall can't be completed.
+	 * @throws WireException Should throw an Exception if uninstall can't be completed.
 	 *
 	 */
 	public function ___uninstall() {

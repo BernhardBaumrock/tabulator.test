@@ -58,7 +58,7 @@ function CommentFormStars() {
 		if(typeof offClass == "undefined") offClass = 'CommentStarOff';
 		
 		if(typeof starOn != "undefined") {
-			var starOff = $parent.attr('data-off');
+			starOff = $parent.attr('data-off');
 			starOn = decodeEntities(starOn);
 			starOff = decodeEntities(starOff);
 		} else {
@@ -129,23 +129,28 @@ function CommentActionReplyClick() {
 		// clone the main CommentForm
 		$form = jQuery('#CommentForm form').clone().removeAttr('id');
 		$form.addClass('CommentForm' + commentID);
-		$form.hide().find('.CommentFormParent').val($(this).attr('data-comment-id'));
-		var $formPlaceholder = $item.find('form:eq(0)');
+		$form.hide().find('.CommentFormParent').val(commentID);
+		var $formPlaceholder = $item.find('form:not(.CommentFormReply):eq(0)');
 		if($formPlaceholder.length) {
 			// use existing <form></form> placed in there as optional target for reply form
 			$formPlaceholder.replaceWith($form);
 		} else {
 			$this.parent().after($form);
 		}
+		$form.addClass('CommentFormReply');
 		if($form.is('form[hidden]')) {
 			$form.removeAttr('hidden');
 		} else if(!$form.is(':visible')) {
 			$form.slideDown();
 		}
+		$form.trigger('CommentFormReplyAdd');
+		$form.trigger('CommentFormReplyShow');
 	} else if(!$form.is(':visible')) {
 		$form.slideDown();
+		$form.trigger('CommentFormReplyShow');
 	} else {
 		$form.slideUp();
+		$form.trigger('CommentFormReplyHide');
 	}
 	
 	return false;
@@ -225,7 +230,8 @@ function CommentFormCookies() {
 	$form.find(".CommentFormCite input").val(values[0]);
 	$form.find(".CommentFormEmail input").val(values[1]);
 	$form.find(".CommentFormWebsite input").val(values[2]);
-	$form.find(".CommentFormNotify :input[value='" + values[3] + "']").attr('checked', 'checked');
+	// $form.find(".CommentFormNotify :input[value='" + values[3] + "']").attr('checked', 'checked'); // JQM
+	$form.find(".CommentFormNotify :input[value='" + values[3] + "']").prop('checked', true);
 }
 
 /**

@@ -346,7 +346,7 @@ class PagesLoader extends Wire {
 			// [ pageID => [ all pages columns ] ]
 			$pagesInfo = $pageFinder->findVerboseIDs($selectors, $options);
 		} else {
-			// [ [ 'id' => 3, 'templates_id' => 2, 'parent_id' => 1 ]
+			// [ [ 'id' => 3, 'templates_id' => 2, 'parent_id' => 1, 'score' => 1.123 ]
 			$pagesInfo = $pageFinder->find($selectors, $options);
 		}
 		
@@ -398,13 +398,16 @@ class PagesLoader extends Wire {
 			$parent_id = $pageFinder->getParentID();
 			$idsSorted = array();
 			$idsByTemplate = array();
+			$scores = array();
 
 			// organize the pages by template ID
 			foreach($pagesInfo as $page) {
-				$tpl_id = $page['templates_id'];
+				$tpl_id = (int) $page['templates_id'];
+				$id = (int) $page['id'];
 				if(!isset($idsByTemplate[$tpl_id])) $idsByTemplate[$tpl_id] = array();
-				$idsByTemplate[$tpl_id][] = $page['id'];
-				$idsSorted[] = $page['id'];
+				$idsByTemplate[$tpl_id][] = $id;
+				$idsSorted[] = $id;
+				if(!empty($page['score'])) $scores[$id] = (float) $page['score'];
 			}
 
 			if(count($idsByTemplate) > 1) {
@@ -440,6 +443,13 @@ class PagesLoader extends Wire {
 			
 			$sortsAfter = $pageFinder->getSortsAfter();
 			if(count($sortsAfter)) $pages->sort($sortsAfter);
+			
+			if(count($scores)) {
+				foreach($pages as $page) {
+					$score = isset($scores[$page->id]) ? $scores[$page->id] : 0; 
+					$page->setQuietly('_pfscore', $score); 
+				}
+			}
 
 		} else {
 			$pages = $this->pages->newPageArray($loadOptions);
@@ -549,7 +559,7 @@ class PagesLoader extends Wire {
 
 		return $page && $page->id ? $page : $this->pages->newNullPage();
 	}
-
+	
 	/**
 	 * Returns the first page matching the given selector with no exclusions
 	 *
@@ -559,20 +569,39 @@ class PagesLoader extends Wire {
 	 *
 	 */
 	public function get($selector, $options = array()) {
+		
 		if(empty($selector)) return $this->pages->newNullPage();
-		if(is_string($selector) || is_int($selector)) {
-			$page = $this->pages->getCache($selector);
-			if($page) return $page;
+		
+		if(is_int($selector)) {
+			$getCache = true;
+		} else if(is_string($selector) && (ctype_digit($selector) || strpos($selector, 'id=') === 0)) {
+			$getCache = true;
+		} else {
+			$getCache = false;
 		}
+		
+		if($getCache) {
+			// if cache is possible, allow user-specified options to dictate whether cache is allowed
+			if(isset($options['loadOptions']) && isset($options['loadOptions']['getFromCache'])) {
+				$getCache = (bool) $options['loadOptions']['getFromCache'];
+			}
+			if($getCache) {
+				$page = $this->pages->getCache($selector); // selector is either 123 or id=123
+				if($page) return $page;
+			}
+		}
+		
 		$defaults = array(
 			'findOne' => true, // find only one page
 			'findAll' => true, // no exclusions
 			'getTotal' => false, // don't count totals
 			'caller' => 'pages.get'
 		);
+		
 		$options = count($options) ? array_merge($defaults, $options) : $defaults;
 		$page = $this->pages->find($selector, $options)->first();
 		if(!$page) $page = $this->pages->newNullPage();
+		
 		return $page;
 	}
 
@@ -1272,6 +1301,42 @@ class PagesLoader extends Wire {
 			'parent_id' => (int) $parentID,
 			'getOne' => true
 		));
+	}
+
+	/**
+	 * Get a fresh, non-cached copy of a Page from the database
+	 *
+	 * This method is the same as `$pages->get()` except that it skips over all memory caches when loading a Page.
+	 * Meaning, if the Page is already in memory, it doesn’t use the one in memory and instead reloads from the DB.
+	 * Nor does it place the Page it loads in any memory cache. Use this method to load a fresh copy of a page
+	 * that you might need to compare to an existing loaded copy, or to load a copy that won’t be seen or touched
+	 * by anything in ProcessWire other than your own code.
+	 *
+	 * ~~~~~
+	 * $p1 = $pages->get(1234);
+	 * $p2 = $pages->get($p1->path);
+	 * $p1 === $p2; // true: same Page instance
+	 *
+	 * $p3 = $pages->getFresh($p1);
+	 * $p1 === $p3; // false: same Page but different instance
+	 * ~~~~~
+	 *
+	 * #pw-advanced
+	 *
+	 * @param Page|string|array|Selectors|int $selectorOrPage Specify Page to get copy of, selector or ID
+	 * @param array $options Options to modify behavior
+	 * @return Page|NullPage
+	 * @since 3.0.172
+	 *
+	 */
+	public function getFresh($selectorOrPage, $options = array()) {
+		if(!isset($options['cache'])) $options['cache'] = false;
+		if(!isset($options['loadOptions'])) $options['loadOptions'] = array();
+		if(!isset($options['caller'])) $options['caller'] = 'pages.loader.getFresh';
+		$options['loadOptions']['getFromCache'] = false;
+		if(!isset($options['loadOptions']['cache'])) $options['loadOptions']['cache'] = false;
+		$selector = $selectorOrPage instanceof Page ? $selectorOrPage->id : $selectorOrPage;
+		return $this->get($selector, $options);
 	}
 	
 	/**

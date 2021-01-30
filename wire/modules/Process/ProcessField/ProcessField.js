@@ -9,8 +9,8 @@ $(document).ready(function() {
 
 	var $asmListItemStatus = $("#asmListItemStatus"); 
 	
-	// setup the column width slider
-	var $columnWidth = $("#columnWidth");
+	// setup the primary column width slider
+	var $columnWidth = $("#columnWidth"); 
 	
 	function setAsmListItemStatus() {
 		var tpl = $asmListItemStatus.attr('data-tpl');
@@ -33,10 +33,12 @@ $(document).ready(function() {
 	$("#Inputfield_required").change(setAsmListItemStatus);
 	setAsmListItemStatus();
 
-	if($columnWidth.length > 0) { 
+	$('.columnWidthInput').each(function() {
+		var $columnWidth = $(this);
 		var $slider = $("<div class='InputfieldColumnWidthSlider'></div>");
-		var columnWidthVal = parseInt($("#columnWidth").val());
-		$columnWidth.val(columnWidthVal + '%'); 
+		var columnWidthVal = parseInt($columnWidth.val());
+		
+		$columnWidth.val(columnWidthVal + '%');
 		$columnWidth.after($slider);
 		$slider.slider({
 			range: 'min',
@@ -46,22 +48,22 @@ $(document).ready(function() {
 			slide: function(e, ui) {
 				var val = ui.value + '%';
 				$columnWidth.val(val).trigger('change');
-				setAsmListItemStatus();
+				if($columnWidth.prop('id') === 'columnWidth') setAsmListItemStatus();
 			}
 		});
 		// enables columnWidth to be populated in ProcessTemplate's asmSelect status field
 		// $columnWidth.addClass('asmListItemStatus');
 		// $("#asmListItemStatus").val($columnWidth.val());
-		
+
 		// update the slider if the columnWidth field is changed manually	
 		$columnWidth.change(function() {
 			var val = parseInt($(this).val());
-			if(val > 100) val = 100; 
-			if(val < 10) val = 10; 
+			if(val > 100) val = 100;
+			if(val < 10) val = 10;
 			$(this).val(val + '%');
-			$slider.slider('option', 'value', val); 
-		}); 
-	}
+			$slider.slider('option', 'value', val);
+		});
+	});
 
 	// instantiate the WireTabs
 	var $fieldEdit = $("#ProcessFieldEdit"); 
@@ -108,7 +110,8 @@ $(document).ready(function() {
 	// setup access control tab
 	$("#viewRoles_37").click(function() {
 		// if guest has view, then all have view
-		if($(this).is(":checked")) $("input.viewRoles").attr('checked', 'checked');
+		// if($(this).is(":checked")) $("input.viewRoles").attr('checked', 'checked'); // JQM
+		if($(this).is(":checked")) $("input.viewRoles").prop('checked', true);
 	});
 	$("input.viewRoles:not(#viewRoles_37)").click(function() {
 		// prevent unchecking 'view' for other roles when 'guest' role is checked
@@ -118,7 +121,8 @@ $(document).ready(function() {
 	$("input.editRoles:not(:disabled)").click(function() {
 		if($(this).is(":checked")) {
 			// if editable is checked, then viewable must also be checked
-			$(this).closest('tr').find("input.viewRoles").attr('checked', 'checked'); 
+			// $(this).closest('tr').find("input.viewRoles").attr('checked', 'checked'); // JQM
+			$(this).closest('tr').find("input.viewRoles").prop('checked', true); 
 		}
 	}); 
 
@@ -126,10 +130,12 @@ $(document).ready(function() {
 	$(".override-select-all").click(function() {
 		var $checkboxes = $(this).closest('table').find("input[type=checkbox]");
 		if($(this).hasClass('override-checked')) {
-			$checkboxes.removeAttr('checked');
+			// $checkboxes.removeAttr('checked'); // JQM
+			$checkboxes.prop('checked', false);
 			$(this).removeClass('override-checked'); 
 		} else {
-			$checkboxes.attr('checked', 'checked');
+			// $checkboxes.attr('checked', 'checked'); // JQM
+			$checkboxes.prop('checked', true);
 			$(this).addClass('override-checked');
 		}
 		return false;

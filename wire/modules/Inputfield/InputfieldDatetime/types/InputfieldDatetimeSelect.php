@@ -138,7 +138,7 @@ class InputfieldDatetimeSelect extends InputfieldDatetimeType {
 		
 		$attrs = $this->inputfield->getAttributes();
 		$attrs['type'] = 'hidden';
-		$attrs['value'] = date(InputfieldDatetime::defaultDateInputFormat . ' ' . InputfieldDatetime::defaultTimeInputFormat, $value);
+		if($value) $attrs['value'] = date(InputfieldDatetime::defaultDateInputFormat . ' ' . InputfieldDatetime::defaultTimeInputFormat, $value);
 		unset($attrs['size'], $attrs['placeholder'], $attrs['class'], $attrs['required']);
 		$attrs['class'] = 'InputfieldDatetimeValue';
 		$attrStr = $this->inputfield->getAttributesString($attrs);
@@ -165,7 +165,7 @@ class InputfieldDatetimeSelect extends InputfieldDatetimeType {
 			'day' => (int) $input[$name . '__d'],
 		);
 
-		if(!strlen(trim("$a[month]$a[day]$a[year]"))) {
+		if(!strlen(trim("$a[month]$a[day]$a[year]", "0"))) {
 			// empty value
 			$this->setAttribute('value', '');
 			return '';

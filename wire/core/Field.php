@@ -19,6 +19,7 @@
  * @property string $name Name of field  #pw-group-properties
  * @property string $table Database table used by the field #pw-group-properties
  * @property string $prevTable Previously database table (if field was renamed) #pw-group-properties
+ * @property string $prevName Previously used name (if field was renamed), 3.0.164+ #pw-group-properties
  * @property Fieldtype|null $type Fieldtype module that represents the type of this field #pw-group-properties
  * @property Fieldtype|null $prevFieldtype Previous Fieldtype, if type was changed #pw-group-properties
  * @property int $flags Bitmask of flags used by this field #pw-group-properties
@@ -36,6 +37,7 @@
  * @property int|null $paginationLimit Used by paginated WireArray values to indicate limit to use during load. #pw-internal
  * @property array $allowContexts Names of settings that are custom configured to be allowed for context. #pw-group-properties
  * @property bool|int|null $flagUnique Non-empty value indicates request for, or presence of, Field::flagUnique flag. #pw-internal
+ * @property Fieldgroup|null $_contextFieldgroup Fieldgroup field is in context for or null if not in context. #pw-internal
  *
  * Common Inputfield properties that Field objects store:  
  * @property int|bool|null $required Whether or not this field is required during input #pw-group-properties
@@ -178,18 +180,26 @@ class Field extends WireData implements Saveable, Exportable {
 	protected $prevTable;
 
 	/**
-	 * A specifically set table name by setTable() for override purposes
+	 * If the field name changed, this is the previous name
 	 * 
 	 * @var string
 	 * 
 	 */
-	protected $setTable = '';
+	protected $prevName = '';
 
 	/**
 	 * If the field type changed, this is the previous fieldtype so that it can be changed at save time
 	 *
 	 */
 	protected $prevFieldtype;
+	
+	/**
+	 * A specifically set table name by setTable() for override purposes
+	 *
+	 * @var string
+	 *
+	 */
+	protected $setTable = '';
 
 	/**
 	 * Accessed properties, becomes array when set to true, null when set to false
@@ -267,6 +277,9 @@ class Field extends WireData implements Saveable, Exportable {
 			return $this->setFieldtype($value);
 		} else if($key == 'prevTable') {
 			$this->prevTable = $value;
+			return $this;
+		} else if($key == 'prevName') {
+			$this->prevName = $value;
 			return $this;
 		} else if($key == 'prevFieldtype') {
 			$this->prevFieldtype = $value;
@@ -388,6 +401,7 @@ class Field extends WireData implements Saveable, Exportable {
 			else if($key == 'editRoles') return $this->editRoles;
 			else if($key == 'table') return $this->getTable();
 			else if($key == 'prevTable') return $this->prevTable;
+			else if($key == 'prevName') return $this->prevName;
 			else if($key == 'prevFieldtype') return $this->prevFieldtype;
 			else if(isset($this->settings[$key])) return $this->settings[$key];
 			else if($key == 'icon') return $this->getIcon(true);
@@ -567,7 +581,7 @@ class Field extends WireData implements Saveable, Exportable {
 		// populate import data
 		foreach($changes as $key => $change) {
 			$this->errors('clear all');
-			$this->set($key, $data[$key]);
+			if(isset($data[$key])) $this->set($key, $data[$key]);
 			if(!empty($data['errors'][$key])) {
 				$error = $data['errors'][$key];
 				// just in case they switched it to an array of multiple errors, convert back to string
@@ -615,7 +629,10 @@ class Field extends WireData implements Saveable, Exportable {
 				throw new WireException("You may not change the name of field '{$this->settings['name']}' because it is a system field.");
 			}
 			$this->trackChange('name');
-			if($this->settings['name']) $this->prevTable = $this->getTable(); // so that Fields can perform a table rename
+			if($this->settings['name']) {
+				$this->prevName = $this->settings['name'];
+				$this->prevTable = $this->getTable(); // so that Fields can perform a table rename
+			}
 		}
 
 		$this->settings['name'] = $name;
@@ -671,6 +688,59 @@ class Field extends WireData implements Saveable, Exportable {
 	 */
 	public function getFieldtype() {
 		return $this->type; 
+	}
+
+	/**
+	 * Get this field in context of a Page/Template
+	 * 
+	 * #pw-group-retrieval
+	 * 
+	 * @param Page|Template|Fieldgroup|string $for Specify Page, Template, or template name string
+	 * @param string $namespace Optional namespace (internal use)
+	 * @param bool $has Return boolean rather than Field to check if context exists? (default=false)
+	 * @return Field|bool
+	 * @since 3.0.162
+	 * @see Fieldgroup::getFieldContext(), Field::hasContext()
+	 * 
+	 */
+	public function getContext($for, $namespace = '', $has = false) {
+		/** @var Fieldgroup|null $fieldgroup */
+		$fieldgroup = null;
+		if(is_string($for)) {
+			$for = $this->wire()->templates->get($for);
+		}
+		if($for instanceof Page) {
+			/** @var Page $context */
+			$template = $for instanceof NullPage ? null : $for->template;
+			if(!$template) throw new WireException('Page must have template to get context');
+			$fieldgroup = $template->fieldgroup;
+		} else if($for instanceof Template) {
+			/** @var Template $context */
+			$fieldgroup = $for->fieldgroup;
+		} else if($for instanceof Fieldgroup) {
+			$fieldgroup = $for;
+		}
+		if(!$fieldgroup) throw new WireException('Cannot get Fieldgroup for field context'); 
+		
+		if($has) return $fieldgroup->hasFieldContext($this->id, $namespace);
+
+		return $fieldgroup->getFieldContext($this->id, $namespace);
+	}
+
+	/**
+	 * Does this field have context settings for given Page/Template?
+	 *
+	 * #pw-group-retrieval
+	 *
+	 * @param Page|Template|Fieldgroup|string $for Specify Page, Template, or template name string
+	 * @param string $namespace Optional namespace (internal use)
+	 * @return Field|bool
+	 * @since 3.0.163
+	 * @see Field::getContext()
+	 *
+	 */
+	public function hasContext($for, $namespace = '') {
+		return $this->getContext($for, $namespace, true);
 	}
 
 	/**
@@ -1427,6 +1497,7 @@ class Field extends WireData implements Saveable, Exportable {
 		$info['flags'] = $info['flags'] ? "$this->flagsStr ($info[flags])" : "";
 		$info = array_merge($info, parent::__debugInfo());
 		if($this->prevTable) $info['prevTable'] = $this->prevTable;
+		if($this->prevName) $info['prevName'] = $this->prevName;
 		if($this->prevFieldtype) $info['prevFieldtype'] = (string) $this->prevFieldtype;
 		if(!empty($this->trackGets)) $info['trackGets'] = $this->trackGets;
 		if($this->useRoles) {

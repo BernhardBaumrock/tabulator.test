@@ -109,6 +109,7 @@ class LanguageSupportPageNames extends WireData implements Module, ConfigurableM
 			$pageNumUrlPrefix = $this->get("pageNumUrlPrefix$language"); 
 			if($pageNumUrlPrefix) $pageNumUrlPrefixes[] = $pageNumUrlPrefix;
 			$fields->setNative("name$language"); 
+			$fields->setNative("status$language"); 
 		}
 		if(count($pageNumUrlPrefixes)) {
 			$pageNumUrlPrefixes[] = $config->pageNumUrlPrefix; // original/fallback prefix
@@ -352,6 +353,11 @@ class LanguageSupportPageNames extends WireData implements Module, ConfigurableM
 	public function getPagePath(Page $page, Language $language) {
 
 		$isDefault = $language->isDefault();
+		
+		if(!$isDefault && $page->template && $page->template->noLang) {
+			$language = $this->wire()->languages->getDefault();
+			$isDefault = true;
+		}
 
 		if($page->id == 1) {
 			// special case: homepage
@@ -684,9 +690,9 @@ class LanguageSupportPageNames extends WireData implements Module, ConfigurableM
 	public function hookPagePath(HookEvent $event) {
 		/** @var Page $page */
 		$page = $event->object; 
-		if($page->template == 'admin') return;
-		$language = $this->wire('user')->get('language'); 
-		if(!$language) $language = $this->wire('languages')->get('default'); 
+		if($page->template->name == 'admin') return;
+		$language = $this->wire()->user->language;
+		if(!$language) $language = $this->wire()->languages->getDefault();
 		$event->return = $this->getPagePath($page, $language); 
 	}
 
@@ -888,13 +894,18 @@ class LanguageSupportPageNames extends WireData implements Module, ConfigurableM
 		/** @var array $extraData */
 		$extraData = $event->return; 
 		
-		$alwaysActiveTypes = array('User', 'Role', 'Permission', 'Language'); 
+		$alwaysActiveTypes = array(
+			'User', 'UserPage', 
+			'Role', 'RolePage', 
+			'Permission', 'PermissionPage', 
+			'Language', 'LanguagePage',
+		); 
 		$pageNameCharset = $this->wire('config')->pageNameCharset;
 		$isCloning = $pages->editor()->isCloning();
 		
 		if(!is_array($extraData)) $extraData = array();
 		
-		foreach($this->wire('languages') as $language) {
+		foreach($this->wire()->languages as $language) {
 			
 			if($language->isDefault()) continue; 
 			$language_id = (int) $language->id; 

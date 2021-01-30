@@ -6,7 +6,7 @@
  * This file is designed for inclusion by /site/templates/admin.php template and all the variables 
  * it references are from your template namespace. 
  *
- * Copyright 2018 by Ryan Cramer
+ * Copyright 2021 by Ryan Cramer
  * 
  * @var Config $config
  * @var User $user
@@ -18,6 +18,7 @@
  * @var Sanitizer $sanitizer
  * @var Session $session
  * @var Notices $notices
+ * @var AdminTheme $adminTheme
  * 
  *
  */
@@ -54,6 +55,8 @@ function _checkForHttpHostError(Config $config) {
 	if(isset($_SERVER['HTTP_HOST']) && $httpHost === strtolower($_SERVER['HTTP_HOST'])) {
 		$valid = true; 
 	} else if(isset($_SERVER['SERVER_NAME']) && $httpHost === strtolower($_SERVER['SERVER_NAME'])) {
+		$valid = true; 
+	} else if(in_array($httpHost, $config->httpHosts)) {
 		$valid = true; 
 	}
 
@@ -97,6 +100,12 @@ function _checkForMaxInputVars(WireInput $input) {
 	}
 }
 
+// fallback theme if one not already present
+if(empty($adminTheme)) {
+	$adminTheme = $modules->get($config->defaultAdminTheme ? $config->defaultAdminTheme : 'AdminThemeUikit');
+	if(empty($adminTheme)) $adminTheme = $modules->get('AdminThemeUikit');
+	if($adminTheme) $wire->wire('adminTheme', $adminTheme);
+}
 
 // notify superuser if there is an http host error
 if($user->isSuperuser()) _checkForHttpHostError($config); 
@@ -204,14 +213,19 @@ if($ajax) {
 	ob_end_clean();
 }
 
-$config->js(array('httpHost', 'httpHosts'), true); 
+// config properties that should be mirrored to ProcessWire.config.property in JS
+$config->js(array('httpHost', 'httpHosts', 'https'), true); 
 
 if($controller && $controller->isAjax()) {
 	if(empty($content) && count($notices)) $content = $controller->jsonMessage($notices->last()->text); 
 	echo $content; 
 } else {
 	if(!strlen($content)) $content = '<p>' . __('The process returned no content.') . '</p>';
-	$adminThemeFile = $config->paths->adminTemplates . 'default.php';
+	if($adminTheme) {
+		$adminThemeFile = $adminTheme->path() . 'default.php';
+	} else {
+		$adminThemeFile = $config->paths->adminTemplates . 'default.php';
+	}
 	if(strpos($adminThemeFile, $config->paths->site) === 0) {
 		// @todo determine if compilation needed
 		$adminThemeFile = $wire->files->compile($adminThemeFile);

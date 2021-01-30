@@ -5,11 +5,13 @@
  *
  * #pw-summary Specific text and markup tools for ProcessWire $sanitizer and elsewhere.
  *
- * ProcessWire 3.x, Copyright 2018 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2020 by Ryan Cramer
  * https://processwire.com
  * 
  * @since 3.0.101
- *
+ * 
+ * @method array wordAlternates($word, array $options = array()) Protected method for hooking purposes only #pw-hooker #pw-internal
+ * @method string wordStem($word) Protected method for hooking purposes only #pw-hooker #pw-internal
  *
  */
 
@@ -461,6 +463,10 @@ class WireTextTools extends Wire {
 	 *
 	 */
 	function truncate($str, $maxLength, $options = array()) {
+		
+		if(!strlen($str)) return '';
+
+		$ent = __(true, 'entityEncode', false);
 
 		$defaults = array(
 			'type' => 'word', // word, punctuation, sentence, or block
@@ -478,8 +484,8 @@ class WireTextTools extends Wire {
 			'noEndSentence' => $this->_('Mr. Mrs. Ms. Dr. Hon. PhD. i.e. e.g.'), // When in sentence type, words that do not end the sentence (space-separated)
 		);
 
-		if(!strlen($str)) return '';
-
+		if($ent) __(true, 'entityEncode', $ent);
+		
 		if(is_string($options) && ctype_alpha($options)) {
 			$defaults['type'] = $options;
 			$options = array();
@@ -589,7 +595,7 @@ class WireTextTools extends Wire {
 				$pos = array_pop($tests);
 				$result = trim($this->substr($str, 0, $pos + 1));
 				$lastChar = $this->substr($result, -1);
-				$result = rtrim($result, $options['trim']);
+				$result = $this->rtrim($result, $options['trim']);
 
 				if($type === 'sentence' || $type === 'block') {
 					// good to go with result as is
@@ -602,7 +608,7 @@ class WireTextTools extends Wire {
 						if(in_array($c, $endSentenceChars)) continue;
 						$trims .= $c;
 					}
-					$result = rtrim($result, $trims) . $options['more'];
+					$result = $this->rtrim($result, $trims) . $options['more'];
 				} else {
 					$result .= $options['more'];
 				}
@@ -615,7 +621,7 @@ class WireTextTools extends Wire {
 			}
 		} else {
 			// if we didn't find any place to truncate, just return exact truncated string
-			$result = trim($str, $options['trim']) . $options['more'];
+			$result = $this->trim($str, $options['trim']) . $options['more'];
 		}
 		
 		if(strlen($options['more'])) {
@@ -709,14 +715,134 @@ class WireTextTools extends Wire {
 	 * 
 	 */
 	public function getPunctuationChars($sentence = false) {
+		$ent = __(true, 'entityEncode', false);
 		if($sentence) {
 			$s = $this->_('. ? !'); // Sentence ending punctuation characters (must be space-separated)
 		} else {
 			$s = $this->_(', : . ? ! “ ” „ " – -- ( ) [ ] { } « »'); // All punctuation characters (must be space-separated)
 		}
+		if($ent) __(true, 'entityEncode', $ent);
 		return explode(' ', $s); 
 	}
+
+	/**
+	 * Get alternate words for given word 
+	 * 
+	 * This method does not do anything unless an implementation is provided by a module (or something else)
+	 * hooking the protected `WireTextTools::wordAlternates($word, $options)` method. Implementation should 
+	 * populate $event->return with any or all of the following (as available): 
+	 * 
+	 * - Word plural(s)
+	 * - Word singular(s)
+	 * - Word Lemmas
+	 * - Word Synonyms
+	 * - Anything else applicable to current $user->language
+	 * 
+	 * See the protected WireTextTools::wordAlternates() method for hook instructions and an example. 
+	 * 
+	 * @param string $word
+	 * @param array $options
+	 *  - `operator` (string): Operator being used, if applicable (default='')
+	 *  - `minLength` (int): Minimum word length to return in alternates (default=2)
+	 *  - `lowercase` (bool): Convert words to lowercase, if not already (default=false)
+	 * @return array
+	 * @since 3.0.162
+	 * @see WireTextTools::getWordStem()
+	 * 
+	 */
+	public function getWordAlternates($word, array $options = array()) {
+		
+		if(!$this->hasHook('wordAlternates()')) return array();
+		
+		$defaults = array(
+			'operator' => '', 
+			'minLength' => 2, 
+			'lowercase' => false, 
+		);
+		
+		$options = array_merge($defaults, $options);
+		$word = $this->trim($word);
+		$words = array();
+		$wordLow = $this->strtolower($word);
+		
+		if($options['lowercase']) $word = $wordLow;
+		if(empty($word)) return array();
+		
+		$alternates = $this->wordAlternates($word, $options);
+		if(!count($alternates)) return array();
+		
+		// if original word appears in return value, remove it
+		$key = array_search($word, $alternates);
+		if($key !== false) unset($alternates[$key]);
+		
+		// populate $words, removing any invalid or duplicate values
+		foreach($alternates as $w) {
+			if(!is_string($w)) continue;
+			$w = $this->trim($w);
+			$wLow = $this->strtolower($w);
+			if($wLow === $wordLow) continue; // dup of original word
+			if($options['lowercase']) $w = $wLow; // use lowercase
+			if($this->strlen($w) < $options['minLength']) continue; // too short
+			if(isset($words[$wLow])) continue; // already have it
+			$words[$wLow] = $w;
+		}
 	
+		return array_values($words);
+	}
+	
+	/**
+	 * Hookable method to return alternate words for given word
+	 *
+	 * This hookable method is separate from the public getWordAlternates() method so that
+	 * we can provide predictable and already-populated $options to whatever is hooking this, as
+	 * as provide some additional QA with the return value from modules/hooks.
+	 *
+	 * It is fine if the return value contains duplicates, the original word, or too-short words,
+	 * as the calling getWordAlternates() takes care of those before returning words to user.
+	 * Basically, hooks can ignore the `$options` argument, unless they need to know the `operator`,
+	 * which may or may not be provided by the caller.
+	 *
+	 * In hook implementation, avoid deleting what’s already present in $event->return just in
+	 * case multiple hooks are adding words.
+	 *
+	 * ~~~~~
+	 * // Contrived example of how to implement
+	 * $wire->addHookAfter('WireTextTools::wordAlternates', function(HookEvent $event) {
+	 *   $word = $event->arguments(0); // string: word requested alternates for
+	 *   $words = $event->return; // array: existing return value
+	 *
+	 *   $cats = [ 'cat', 'cats', 'kitty', 'feline', 'felines' ];
+	 *   $dogs = [ 'dog', 'dogs', 'doggy', 'canine', 'canines' ];
+	 *
+	 *   if(in_array($word, $cats)) {
+	 *     $words = array_merge($words, $cats);
+	 *   } else if(in_array($word, $dogs)) {
+	 *     $words = array_merge($words, $dogs);
+	 *   }
+	 *
+	 *   $event->return = $words;
+	 * });
+	 *
+	 * // Test it out
+	 * $words = $sanitizer->getTextTools()->getWordAlternates('cat');
+	 * echo implode(', ', $words); // outputs: cats, kitty, kitten, feline, felines
+	 * ~~~~~
+	 *
+	 * #pw-hooker
+	 *
+	 * @param string $word
+	 * @param array $options
+	 *  - `operator` (string): Operator being used, if applicable (default='')
+	 * @return array
+	 * @since 3.0.162
+	 *
+	 */
+	protected function ___wordAlternates($word, array $options) {
+		if($word && $options) {} // ignore
+		$alternates = array();
+		return $alternates;
+	}
+
 	/**
 	 * Find and return all {placeholder} tags found in given string
 	 *
@@ -981,6 +1107,89 @@ class WireTextTools extends Wire {
 		
 		return $out;
 	}
+
+	/**
+	 * Find escaped characters in $str, replace them with a placeholder, and return the placeholders 
+	 * 
+	 * Usage
+	 * ~~~~~
+	 * // 1. Escape certain chars in a string that you want to survive some processing:
+	 * $str = 'Hello \*world\* foo \"bar\" baz'; 
+	 * 
+	 * // 2. Use this method to find escape chars and replace them temporarily:
+	 * $a = $sanitizer->getTextTools()->findReplaceEscapeChars($str, [ '*', '"' ]); 
+	 * 
+	 * // 3. Process string with anything that you want NOT to see chars that were escaped:
+	 * $str = some_function_that_processes_the_string($str);
+	 * 
+	 * // 4. Do this to restore the escaped chars (restored without backslashes by default):
+	 * $str = str_replace(array_keys($a), array_values($a), $str); 
+	 * ~~~~~
+	 * 
+	 * @param string &$str String to find escape chars in, it will be modified directly (passed by reference)
+	 * @param array $escapeChars Array of chars you want to escape i.e. [ '*', '[', ']', '(', ')', '`', '_', '\\', '"' ]
+	 * @param array $options Options to modify behavior: 
+	 *  - `escapePrefix` (string): Character used to escape another character (default is backslash).
+	 *  - `restoreEscape` (bool): Should returned array also include the escape prefix, so escapes are restored? (default=false)
+	 *  - `gluePrefix` (string): Prefix for placeholders we substitute for escaped characters (default='{ESC') 
+	 *  - `glueSuffix` (string): Suffix for placeholders we substitute for escaped characters (default='}')
+	 *  - `unescapeUnknown` (bool): If we come across escaped char not in your $escapeChars list, unescape it? (default=false)
+	 *  - `removeUnknown` (bool): If we come across escaped char not in your $escapeChars list, remove the escape and char? (default=false)
+	 * @return array Returns assoc array where keys are placeholders substituted in $str and values are escaped characters. 
+	 * @since 3.0.162
+	 * 
+	 */
+	public function findReplaceEscapeChars(&$str, array $escapeChars, array $options = array()) {
+
+		$defaults = array(
+			'escapePrefix' => '\\',
+			'restoreEscape' => false,  // when restoring, also restore escape prefix?
+			'gluePrefix' => '{ESC',
+			'glueSuffix' => '}',
+			'unescapeUnknown' => false,
+			'removeUnknown' => false,
+		);
+
+		$options = array_merge($defaults, $options);
+		$escapePrefix = $options['escapePrefix'];
+		if(strpos($str, $escapePrefix) === false) return array();
+		$escapes = array();
+		$glueSuffix = $options['glueSuffix'];
+		$parts = explode($escapePrefix, $str);
+		$n = 0;
+
+		do {
+			$gluePrefix = $options['gluePrefix'] . $n;
+		} while($this->strpos($str, $gluePrefix) !== false && ++$n);
+
+		$str = array_shift($parts);
+
+		foreach($parts as $key => $part) {
+
+			$len = $this->strlen($part);
+			$char = $len > 0 ? $this->substr($part, 0, 1) : ''; // char being escaped
+			$part = $len > 1 ? $this->substr($part, 1) : ''; // everything after it
+			$charKey = array_search($char, $escapeChars); // find placeholder (glue)
+
+			if($charKey !== false) {
+				// replace escaped char with placeholder ($glue)
+				$glue = $gluePrefix . $charKey . $glueSuffix;
+				$escapes[$glue] = $options['restoreEscape'] ? $escapePrefix . $char : $char;
+				$str .= $glue . $part;
+			} else if($options['unescapeUnknown']) {
+				// unescape unknown escape char
+				$str .= $char . $part;
+			} else if($options['removeUnknown']) {
+				// remove unknown escape char
+				$str .= $part;
+			} else {
+				// some other backslash that’s allowed, restore back as it was
+				$str .= $escapePrefix . $char . $part;
+			}
+		}
+
+		return $escapes;
+	}
 	
 	/***********************************************************************************************************
 	 * MULTIBYTE PHP STRING FUNCTIONS THAT FALLBACK WHEN MBSTRING NOT AVAILABLE
@@ -1005,7 +1214,7 @@ class WireTextTools extends Wire {
 	 * 
 	 */
 	public function substr($str, $start, $length = null) {
-		return $this->mb ? mb_substr($str, $start, $length) : substr($start, $start, $length);
+		return $this->mb ? mb_substr($str, $start, $length) : substr($str, $start, $length);
 	}
 
 	/**
@@ -1189,7 +1398,39 @@ class WireTextTools extends Wire {
 	 */
 	public function trim($str, $chars = '') {
 		if(!$this->mb) return $chars === '' ? trim($str) : trim($str, $chars);
-		return $this->wire('sanitizer')->trim($str, $chars);
+		return $this->wire()->sanitizer->trim($str, $chars);
+	}
+
+	/**
+	 * Strip whitespace (or other characters) from the beginning of string only (aka left trim)
+	 *
+	 * #pw-group-PHP-function-alternates
+	 *
+	 * @param string $str
+	 * @param string $chars Omit for default
+	 * @return string
+	 * @since 3.0.168
+	 *
+	 */
+	public function ltrim($str, $chars = '') {
+		if(!$this->mb) return $chars === '' ? ltrim($str) : ltrim($str, $chars);
+		return $this->wire()->sanitizer->trim($str, $chars, 'ltrim');
+	}
+	
+	/**
+	 * Strip whitespace (or other characters) from the end of string only (aka right trim)
+	 *
+	 * #pw-group-PHP-function-alternates
+	 *
+	 * @param string $str
+	 * @param string $chars Omit for default
+	 * @return string
+	 * @since 3.0.168
+	 *
+	 */
+	public function rtrim($str, $chars = '') {
+		if(!$this->mb) return $chars === '' ? rtrim($str) : rtrim($str, $chars);
+		return $this->wire()->sanitizer->trim($str, $chars, 'rtrim');
 	}
 	
 

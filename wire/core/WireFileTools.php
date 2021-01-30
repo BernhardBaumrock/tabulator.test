@@ -5,7 +5,7 @@
  * 
  * #pw-summary Helpers for working with files and directories. 
  *
- * ProcessWire 3.x, Copyright 2018 by Ryan Cramer
+ * ProcessWire 3.x, Copyright 2020 by Ryan Cramer
  * https://processwire.com
  *
  * @method bool include($filename, array $vars = array(), array $options = array())
@@ -794,22 +794,49 @@ class WireFileTools extends Wire {
 	/**
 	 * Send the contents of the given filename to the current http connection
 	 *
-	 * This function utilizes the `$config->fileContentTypes` to match file extension
-	 * to content type headers and force-download state.
+	 * This function utilizes the `$config->fileContentTypes` to match file extension to content type headers 
+	 * and force-download state.
 	 *
-	 * This function throws a WireException if the file can't be sent for some reason.
+	 * This function throws a `WireException` if the file can’t be sent for some reason. Set the `throw` option to
+	 * false if you want it to instead return integer 0 when errors occur. 
 	 *
-	 * @param string $filename Full path and filename to send
-	 * @param array $options Optional options that you may pass in (see `WireHttp::sendFile()` for details) 
-	 * @param array $headers Optional headers that are sent (see `WireHttp::sendFile()` for details)
+	 * @param string|bool $filename Full path and filename to send or boolean false if provided in `$options[data]`.
+	 * @param array $options Optional options to modify default behavior: 
+	 *   - `exit` (bool): Halt program execution after file send (default=true).
+	 *   - `partial` (bool): Allow use of partial downloads via HTTP_RANGE requests? Since 3.0.131 (default=true)
+	 *   - `forceDownload` (bool|null): Whether file should force download, or null to let content-type header decide (default=null). 
+	 *   - `downloadFilename` (string): Filename you want the download to show on user’s computer, or omit to use existing (default='').
+	 *   - `headers` (array): The $headers argument to this method can also be provided as an option right here (default=[]). Since 3.0.131.
+	 *   - `data` (string): String of data to send rather than file, $filename argument must be false (default=''). Since 3.0.132.
+	 *   - `limitPath` (string|bool): Prefix disk path $filename must be within, false to disable, true for site/assets (default=false). Since 3.0.169.
+	 *   - `throw` (bool): Throw exceptions on error? When false, it will instead return integer 0 on errors (default=true). Since 3.0.169.
+	 * @param array $headers Optional headers that are sent, below are the defaults:
+	 *   - `pragma`: public
+	 *   - `expires`: 0
+	 *   - `cache-control`: must-revalidate, post-check=0, pre-check=0
+	 *   - `content-type`: {content-type} (replaced with actual content type)
+	 *   - `content-transfer-encoding`: binary
+	 *   - `content-length`: {filesize} (replaced with actual filesize)
+	 *   - To remove a header completely, make its value NULL.
+	 *   - If preferred, the above headers can be specified in `$options[headers]` instead.
+	 * @return int Returns bytes sent, only if `exit` option is false (since 3.0.169)
 	 * @throws WireException
 	 * @see WireHttp::sendFile()
 	 *
 	 */
 	public function send($filename, array $options = array(), array $headers = array()) {
-		$this->allowPath($filename, false, true);
+		$defaults = array('limitPath' => $this->wire()->getStatus() === 32, 'throw' => true);
+		$options = array_merge($defaults, $options);
+		if($filename && !$this->allowPath($filename, $options['limitPath'], $options['throw'])) return 0;
 		$http = new WireHttp();
-		$http->sendFile($filename, $options, $headers);
+		$this->wire($http);
+		try {
+			$result = $http->sendFile($filename, $options, $headers);
+		} catch(\Exception $e) {
+			if($options['throw']) throw $e;
+			$result = 0;
+		}
+		return $result;	
 	}
 
 	/**
@@ -825,6 +852,7 @@ class WireFileTools extends Wire {
 	 *  - `LOCK_EX` (constant): Acquire exclusive lock to file while writing.
 	 * @return int|bool Number of bytes written or boolean false on fail 
 	 * @throws WireException if given invalid $filename (since 3.0.118)
+	 * @see WireFileTools::fileGetContents()
 	 * 
 	 */
 	public function filePutContents($filename, $contents, $flags = 0) {
@@ -832,6 +860,33 @@ class WireFileTools extends Wire {
 		$result = file_put_contents($filename, $contents, $flags); 
 		if($result !== false) $this->chmod($filename);
 		return $result;
+	}
+
+	/**
+	 * Get contents of file
+	 * 
+	 * This is the same as PHP’s `file_get_contents()` except that the arguments are simpler and 
+	 * it may be preferable to use this in ProcessWire for future cases where the file system may be 
+	 * abstracted from the installation.
+	 * 
+	 * @param string $filename Full path and filename to read
+	 * @param int $offset The offset where the reading starts on the original stream. Negative offsets count from the end of the stream.
+	 * @param int $maxlen Maximum length of data read. The default is to read until end of file is reached.
+	 * @return bool|string Returns the read data (string) or boolean false on failure.
+	 * @since 3.0.167
+	 * @see WireFileTools::filePutContents()
+	 * 
+	 */
+	public function fileGetContents($filename, $offset = 0, $maxlen = 0) {
+		if($offset && $maxlen) {
+			return file_get_contents($filename, false, null, $offset, $maxlen); 
+		} else if($offset) {
+			return file_get_contents($filename, false, null, $offset); 
+		} else if($maxlen) {
+			return file_get_contents($filename, false, null, 0, $maxlen); 
+		} else {
+			return file_get_contents($filename);
+		}
 	}
 
 	/**
@@ -942,7 +997,7 @@ class WireFileTools extends Wire {
 		$t->setFilename($filename);
 
 		foreach($vars as $key => $value) {
-			$t->set($key, $value);
+			$t->data($key, $value);
 		}
 		
 		return $t->render();
@@ -993,7 +1048,7 @@ class WireFileTools extends Wire {
 
 		// add .php extension if filename doesn't already have an extension
 		if($options['autoExtension'] && !strrpos(basename($filename), '.')) {
-			$filename .= "." . $options['autoExtension'];
+			$filename .= '.' . $options['autoExtension'];
 		}
 
 		if(strpos($filename, '..') !== false) {
@@ -1034,10 +1089,15 @@ class WireFileTools extends Wire {
 		// include the file
 		TemplateFile::pushRenderStack($filename); 
 		$func = $options['func'];
-		if($func == 'require') require($filename);
-			else if($func == 'require_once') require_once($filename);
-			else if($func == 'include_once') include_once($filename);
-			else include($filename);
+		if($func === 'require') {
+			require($filename);
+		} else if($func === 'require_once') {
+			require_once($filename);
+		} else if($func === 'include_once') {
+			include_once($filename);
+		} else {
+			include($filename);
+		}
 		TemplateFile::popRenderStack();
 
 		return true;
@@ -1077,23 +1137,53 @@ class WireFileTools extends Wire {
 		$namespace = "\\"; // root namespace, if no namespace found
 		
 		if($fileIsContents) {
-			$data = $file;
+			$data = trim($file);
 		} else {
-			$data = file_get_contents($file);
+			$data = trim(file_get_contents($file));
 			if($data === false) return $namespace;
 		}
-		
+
 		// if there's no "namespace" keyword in the file, it's not declaring one
 		$namespacePos = strpos($data, 'namespace');
 		if($namespacePos === false) return $namespace;
 
-		// if file doesn't start with an opening PHP tag, then it's not going to have a namespace declaration
-		$phpOpen = strpos($data, '<' . '?');
-		if($phpOpen !== 0) return $namespace;
-	
 		// quick optimization for common ProcessWire namespace usage
 		if(strpos($data, '<' . '?php namespace ProcessWire;') === 0) return 'ProcessWire';
+
+		// if file doesn't start with an opening PHP tag, then it's not going to have a namespace declaration
+		$phpOpen = strpos($data, '<' . '?');
+		if($phpOpen !== 0) {
+			// file does not begin with opening php tag	
+			// note: this fails for PHP files executable on their own (like shell scripts)
+			return $namespace;
+		}
 	
+		// get everything that appears before "namespace" keyword
+		$head = substr($data, 0, $namespacePos);
+		$headPrev = $head;
+		
+		// declare(...); is the one statement allowed to appear before namespace in PHP files
+		if(strpos($head, 'declare')) {
+			$head = preg_replace('/declare[ ]*\(.+?\)[ ]*;\s*/s', '', $head);
+		}
+
+		// single line comment(s) appear before namespace
+		if(strpos($head, '//') !== false) { 
+			$head = preg_replace('!//.*!', '', $head);
+		}
+		
+		// single or multi-line comments before namespace
+		if(strpos($head, '/' . '*') !== false) {
+			$head = preg_replace('!/\*.*\*/!s', '', $head);
+		}
+		
+		// replace cleaned up head in data
+		if($head !== $headPrev) {
+			$data = str_replace($headPrev, $head, $data);
+		}
+
+		$namespacePos = strpos($data, 'namespace'); // get fresh position
+		if($namespacePos === false) return $namespace; // was likely in a comment
 		$test = substr($data, 0, $namespacePos-1);
 		$test = trim(str_replace(array('<' . '?php', '<' . '?', "\n", "\r", "\t", " "), "", $test));
 		if(!strlen($test)) {
